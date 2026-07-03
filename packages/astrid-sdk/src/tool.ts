@@ -9,7 +9,7 @@
  */
 
 import {
-  type CapsuleConstructor,
+  defer,
   recordTool,
   recordInterceptor,
   recordCommand,
@@ -48,16 +48,16 @@ export function tool(name: string, options: ToolOptions = {}) {
     if (context.private || context.static) {
       throw new Error(`@tool("${name}") must be applied to a public instance method.`);
     }
-    context.addInitializer(function () {
-      const ctor = (this as object).constructor as CapsuleConstructor;
+    const methodName = String(context.name);
+    defer((ctor) =>
       recordTool(ctor, {
         name,
-        methodName: String(context.name),
+        methodName,
         mutable: options.mutable === true,
         description: options.description,
         inputSchema: options.inputSchema,
-      });
-    });
+      }),
+    );
   };
 }
 
@@ -80,14 +80,14 @@ export function interceptor(topic: string, options: InterceptorOptions = {}) {
     if (context.private || context.static) {
       throw new Error(`@interceptor("${topic}") must be applied to a public instance method.`);
     }
-    context.addInitializer(function () {
-      const ctor = (this as object).constructor as CapsuleConstructor;
+    const methodName = String(context.name);
+    defer((ctor) =>
       recordInterceptor(ctor, {
         topic,
-        methodName: String(context.name),
+        methodName,
         mutable: options.mutable === true,
-      });
-    });
+      }),
+    );
   };
 }
 
@@ -107,14 +107,14 @@ export function command(name: string, options: CommandOptions = {}) {
     if (context.private || context.static) {
       throw new Error(`@command("${name}") must be applied to a public instance method.`);
     }
-    context.addInitializer(function () {
-      const ctor = (this as object).constructor as CapsuleConstructor;
+    const methodName = String(context.name);
+    defer((ctor) =>
       recordCommand(ctor, {
         name,
-        methodName: String(context.name),
+        methodName,
         mutable: options.mutable === true,
-      });
-    });
+      }),
+    );
   };
 }
 

@@ -13,12 +13,17 @@ import {
   recordInstall,
   recordUpgrade,
   recordRun,
-  adoptPending,
+  defer,
+  flushDeferred,
 } from "./runtime/registry.js";
 
 /**
  * Class decorator marking the entry-point of the capsule. The decorated
  * class must have a no-arg constructor (state defaults via field initializers).
+ *
+ * Runs last (TC39 applies the class decorator after all member decorators),
+ * so by now every @tool/@install/... has deferred its registration; we flush
+ * them here against the real constructor.
  *
  * Exactly one `@capsule` class per compiled WASM module.
  */
@@ -27,7 +32,7 @@ export function capsule<T extends CapsuleConstructor>(
   _context: ClassDecoratorContext<T>,
 ): T {
   registerCapsule(target);
-  adoptPending(target);
+  flushDeferred(target);
   return target;
 }
 
@@ -43,10 +48,8 @@ export function install<This extends object>(
   if (context.private || context.static) {
     throw new Error("@install must be applied to a public instance method.");
   }
-  context.addInitializer(function () {
-    const ctor = (this as object).constructor as CapsuleConstructor;
-    recordInstall(ctor, String(context.name));
-  });
+  const methodName = String(context.name);
+  defer((ctor) => recordInstall(ctor, methodName));
 }
 
 /**
@@ -60,10 +63,8 @@ export function upgrade<This extends object>(
   if (context.private || context.static) {
     throw new Error("@upgrade must be applied to a public instance method.");
   }
-  context.addInitializer(function () {
-    const ctor = (this as object).constructor as CapsuleConstructor;
-    recordUpgrade(ctor, String(context.name));
-  });
+  const methodName = String(context.name);
+  defer((ctor) => recordUpgrade(ctor, methodName));
 }
 
 /**
@@ -83,8 +84,6 @@ export function run<This extends object>(
   if (context.private || context.static) {
     throw new Error("@run must be applied to a public instance method.");
   }
-  context.addInitializer(function () {
-    const ctor = (this as object).constructor as CapsuleConstructor;
-    recordRun(ctor, String(context.name));
-  });
+  const methodName = String(context.name);
+  defer((ctor) => recordRun(ctor, methodName));
 }
