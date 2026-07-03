@@ -49,7 +49,7 @@ export function tool(name: string, options: ToolOptions = {}) {
       throw new Error(`@tool("${name}") must be applied to a public instance method.`);
     }
     const methodName = String(context.name);
-    defer((ctor) =>
+    defer(context.metadata, (ctor) =>
       recordTool(ctor, {
         name,
         methodName,
@@ -81,7 +81,7 @@ export function interceptor(topic: string, options: InterceptorOptions = {}) {
       throw new Error(`@interceptor("${topic}") must be applied to a public instance method.`);
     }
     const methodName = String(context.name);
-    defer((ctor) =>
+    defer(context.metadata, (ctor) =>
       recordInterceptor(ctor, {
         topic,
         methodName,
@@ -108,7 +108,7 @@ export function command(name: string, options: CommandOptions = {}) {
       throw new Error(`@command("${name}") must be applied to a public instance method.`);
     }
     const methodName = String(context.name);
-    defer((ctor) =>
+    defer(context.metadata, (ctor) =>
       recordCommand(ctor, {
         name,
         methodName,

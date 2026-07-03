@@ -29,10 +29,10 @@ import {
  */
 export function capsule<T extends CapsuleConstructor>(
   target: T,
-  _context: ClassDecoratorContext<T>,
+  context: ClassDecoratorContext<T>,
 ): T {
   registerCapsule(target);
-  flushDeferred(target);
+  flushDeferred(target, context.metadata);
   return target;
 }
 
@@ -49,7 +49,7 @@ export function install<This extends object>(
     throw new Error("@install must be applied to a public instance method.");
   }
   const methodName = String(context.name);
-  defer((ctor) => recordInstall(ctor, methodName));
+  defer(context.metadata, (ctor) => recordInstall(ctor, methodName));
 }
 
 /**
@@ -64,7 +64,7 @@ export function upgrade<This extends object>(
     throw new Error("@upgrade must be applied to a public instance method.");
   }
   const methodName = String(context.name);
-  defer((ctor) => recordUpgrade(ctor, methodName));
+  defer(context.metadata, (ctor) => recordUpgrade(ctor, methodName));
 }
 
 /**
@@ -85,5 +85,5 @@ export function run<This extends object>(
     throw new Error("@run must be applied to a public instance method.");
   }
   const methodName = String(context.name);
-  defer((ctor) => recordRun(ctor, methodName));
+  defer(context.metadata, (ctor) => recordRun(ctor, methodName));
 }

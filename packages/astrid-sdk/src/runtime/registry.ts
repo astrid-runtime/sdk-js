@@ -90,18 +90,45 @@ export function registerCapsule(ctor: CapsuleConstructor, description?: string):
  * Member decorators (@tool/@interceptor/@command/@install/@upgrade/@run) run
  * before the class exists, so they cannot name the constructor. Each defers a
  * closure here; `@capsule` runs last and flushes them with the real ctor.
+ *
+ * Deferred closures are keyed by the class's shared `context.metadata` object
+ * (the same reference reaches every decorator of one class), so members of a
+ * class that is never `@capsule`-decorated cannot leak into the next capsule
+ * evaluated in the same module. The metadata object is only available under
+ * TC39 decorator metadata; where the runtime does not provide it (undefined),
+ * we fall back to a single module queue — which is exactly right for the
+ * enforced "one @capsule class per module" case.
  */
 type DeferredRecord = (ctor: CapsuleConstructor) => void;
-let deferred: DeferredRecord[] = [];
 
-export function defer(record: DeferredRecord): void {
-  deferred.push(record);
+let deferred: DeferredRecord[] = [];
+let deferredByMetadata = new WeakMap<object, DeferredRecord[]>();
+
+export function defer(metadata: object | undefined, record: DeferredRecord): void {
+  if (metadata === undefined) {
+    deferred.push(record);
+    return;
+  }
+  let list = deferredByMetadata.get(metadata);
+  if (list === undefined) {
+    list = [];
+    deferredByMetadata.set(metadata, list);
+  }
+  list.push(record);
 }
 
-/** Apply every deferred member registration against the now-known ctor. */
-export function flushDeferred(ctor: CapsuleConstructor): void {
-  const pending = deferred;
-  deferred = [];
+/** Apply the deferred member registrations for this class against its ctor. */
+export function flushDeferred(ctor: CapsuleConstructor, metadata?: object): void {
+  let pending: DeferredRecord[] = [];
+  if (metadata !== undefined) {
+    pending = deferredByMetadata.get(metadata) ?? [];
+    deferredByMetadata.delete(metadata);
+  }
+  if (deferred.length > 0) {
+    // Fallback bucket (runtimes without decorator metadata).
+    pending = pending.concat(deferred);
+    deferred = [];
+  }
   for (const record of pending) record(ctor);
 }
 
@@ -171,4 +198,5 @@ export function getRegistration(): CapsuleRegistration | undefined {
 export function __resetRegistry(): void {
   registration = undefined;
   deferred = [];
+  deferredByMetadata = new WeakMap();
 }
