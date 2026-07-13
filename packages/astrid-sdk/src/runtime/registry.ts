@@ -3,9 +3,18 @@
  * @upgrade, @interceptor, @command, @run decorators. The bridge reads from
  * this registry to dispatch host export calls.
  *
- * Decorators run during class evaluation, which happens at module init.
- * The bridge is constructed AFTER all decorators have populated the
- * registry, so reads are safe.
+ * Registration timing matters. Method decorators run *before* the class
+ * decorator (TC39 applies member decorators first, in source order, then the
+ * class decorator last) and none of them can see the constructor yet. So the
+ * member decorators defer their registration onto a module-scoped queue; the
+ * `@capsule` class decorator — which does have the constructor — flushes that
+ * queue via `flushDeferred(ctor)`. Everything therefore lands in the registry
+ * synchronously at class-evaluation time, before any instance is constructed
+ * and before the bridge ever reads it.
+ *
+ * (Earlier this was done from `context.addInitializer`, which only runs at
+ * *construction* time — but the bridge reads the registry before constructing
+ * anything, so every registration looked empty. See sdk-js#20.)
  */
 
 export type CapsuleConstructor = new () => object;
@@ -78,49 +87,62 @@ export function registerCapsule(ctor: CapsuleConstructor, description?: string):
 }
 
 /**
- * Decorators may run before `@capsule` if class fields appear before the
- * class itself in source. Buffer pending entries on the constructor so the
- * eventual @capsule call picks them up.
+ * Member decorators (@tool/@interceptor/@command/@install/@upgrade/@run) run
+ * before the class exists, so they cannot name the constructor. Each defers a
+ * closure here; `@capsule` runs last and flushes them with the real ctor.
+ *
+ * Deferred closures are keyed by the class's shared `context.metadata` object
+ * (the same reference reaches every decorator of one class), so members of a
+ * class that is never `@capsule`-decorated cannot leak into the next capsule
+ * evaluated in the same module. The metadata object is only available under
+ * TC39 decorator metadata; where the runtime does not provide it (undefined),
+ * we fall back to a single module queue — which is exactly right for the
+ * enforced "one @capsule class per module" case.
  */
-const pendingByCtor = new WeakMap<CapsuleConstructor, CapsuleRegistration>();
+type DeferredRecord = (ctor: CapsuleConstructor) => void;
 
-function ensureRegistration(ctor: CapsuleConstructor): CapsuleRegistration {
-  if (registration !== undefined && registration.ctor === ctor) {
-    return registration;
+let deferred: DeferredRecord[] = [];
+let deferredByMetadata = new WeakMap<object, DeferredRecord[]>();
+
+export function defer(metadata: object | undefined, record: DeferredRecord): void {
+  if (metadata === undefined) {
+    deferred.push(record);
+    return;
   }
-  let pending = pendingByCtor.get(ctor);
-  if (pending === undefined) {
-    pending = newRegistration(ctor, undefined);
-    pendingByCtor.set(ctor, pending);
+  let list = deferredByMetadata.get(metadata);
+  if (list === undefined) {
+    list = [];
+    deferredByMetadata.set(metadata, list);
   }
-  return pending;
+  list.push(record);
 }
 
-/** Adopt any decorator entries buffered before @capsule fired. */
-export function adoptPending(ctor: CapsuleConstructor): void {
-  if (registration === undefined || registration.ctor !== ctor) return;
-  const pending = pendingByCtor.get(ctor);
-  if (pending === undefined) return;
-  for (const [name, entry] of pending.tools) registration.tools.set(name, entry);
-  for (const [topic, entry] of pending.interceptors) registration.interceptors.set(topic, entry);
-  for (const [name, entry] of pending.commands) registration.commands.set(name, entry);
-  if (pending.installMethod !== undefined && registration.installMethod === undefined) {
-    registration.installMethod = pending.installMethod;
+/** Apply the deferred member registrations for this class against its ctor. */
+export function flushDeferred(ctor: CapsuleConstructor, metadata?: object): void {
+  let pending: DeferredRecord[] = [];
+  if (metadata !== undefined) {
+    pending = deferredByMetadata.get(metadata) ?? [];
+    deferredByMetadata.delete(metadata);
   }
-  if (pending.upgradeMethod !== undefined && registration.upgradeMethod === undefined) {
-    registration.upgradeMethod = pending.upgradeMethod;
+  if (deferred.length > 0) {
+    // Fallback bucket (runtimes without decorator metadata).
+    pending = pending.concat(deferred);
+    deferred = [];
   }
-  if (pending.runMethod !== undefined && registration.runMethod === undefined) {
-    registration.runMethod = pending.runMethod;
+  for (const record of pending) record(ctor);
+}
+
+function requireRegistration(ctor: CapsuleConstructor): CapsuleRegistration {
+  if (registration === undefined || registration.ctor !== ctor) {
+    throw new Error(
+      `Internal: @capsule must register ${ctor.name} before recording its members.`,
+    );
   }
-  if (pending.description !== undefined && registration.description === undefined) {
-    registration.description = pending.description;
-  }
-  pendingByCtor.delete(ctor);
+  return registration;
 }
 
 export function recordTool(ctor: CapsuleConstructor, entry: ToolEntry): void {
-  const target = ensureRegistration(ctor);
+  const target = requireRegistration(ctor);
   if (target.tools.has(entry.name)) {
     throw new Error(`@tool("${entry.name}") declared twice on ${ctor.name}.`);
   }
@@ -128,7 +150,7 @@ export function recordTool(ctor: CapsuleConstructor, entry: ToolEntry): void {
 }
 
 export function recordInterceptor(ctor: CapsuleConstructor, entry: InterceptorEntry): void {
-  const target = ensureRegistration(ctor);
+  const target = requireRegistration(ctor);
   if (target.interceptors.has(entry.topic)) {
     throw new Error(`@interceptor("${entry.topic}") declared twice on ${ctor.name}.`);
   }
@@ -136,7 +158,7 @@ export function recordInterceptor(ctor: CapsuleConstructor, entry: InterceptorEn
 }
 
 export function recordCommand(ctor: CapsuleConstructor, entry: CommandEntry): void {
-  const target = ensureRegistration(ctor);
+  const target = requireRegistration(ctor);
   if (target.commands.has(entry.name)) {
     throw new Error(`@command("${entry.name}") declared twice on ${ctor.name}.`);
   }
@@ -144,7 +166,7 @@ export function recordCommand(ctor: CapsuleConstructor, entry: CommandEntry): vo
 }
 
 export function recordInstall(ctor: CapsuleConstructor, methodName: string): void {
-  const target = ensureRegistration(ctor);
+  const target = requireRegistration(ctor);
   if (target.installMethod !== undefined) {
     throw new Error(`Only one @install method allowed on ${ctor.name}.`);
   }
@@ -152,7 +174,7 @@ export function recordInstall(ctor: CapsuleConstructor, methodName: string): voi
 }
 
 export function recordUpgrade(ctor: CapsuleConstructor, methodName: string): void {
-  const target = ensureRegistration(ctor);
+  const target = requireRegistration(ctor);
   if (target.upgradeMethod !== undefined) {
     throw new Error(`Only one @upgrade method allowed on ${ctor.name}.`);
   }
@@ -160,7 +182,7 @@ export function recordUpgrade(ctor: CapsuleConstructor, methodName: string): voi
 }
 
 export function recordRun(ctor: CapsuleConstructor, methodName: string): void {
-  const target = ensureRegistration(ctor);
+  const target = requireRegistration(ctor);
   if (target.runMethod !== undefined) {
     throw new Error(`Only one @run method allowed on ${ctor.name}.`);
   }
@@ -175,4 +197,6 @@ export function getRegistration(): CapsuleRegistration | undefined {
 /** Test-only: reset the registry to a clean state. */
 export function __resetRegistry(): void {
   registration = undefined;
+  deferred = [];
+  deferredByMetadata = new WeakMap();
 }
