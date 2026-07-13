@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Sync packages/astrid-sdk/wit-contracts/astrid-contracts.wit from the
-# canonical unicity-astrid/wit submodule (at contracts/interfaces/*.wit).
+# canonical astrid-runtime/wit submodule (at contracts/interfaces/*.wit).
 #
 # Mirror of sdk-rust/scripts/sync-contracts-wit.sh — same canonical
 # source, same single-package bundled output shape. Generating the same
@@ -65,7 +65,7 @@ generate() {
 // Concatenated from contracts/interfaces/*.wit by
 // scripts/sync-contracts-wit.sh.
 //
-// Source of truth: unicity-astrid/wit (git submodule at contracts/).
+// Source of truth: astrid-runtime/wit (git submodule at contracts/).
 // Run `scripts/sync-contracts-wit.sh` after pulling the submodule to
 // regenerate this file.
 
