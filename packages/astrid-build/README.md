@@ -5,7 +5,7 @@
 
 **The compiler that turns a TypeScript class into a WASM capsule.**
 
-JavaScript counterpart of [`astrid-sdk-macros`](https://github.com/unicity-astrid/sdk-rust/tree/main/astrid-sdk-macros). Rust uses a proc macro that runs at `cargo build` time; JavaScript needs the same work done by external tooling that runs at `astrid build` time. This package is that tooling.
+JavaScript counterpart of [`astrid-sdk-macros`](https://github.com/astrid-runtime/sdk-rust/tree/main/astrid-sdk-macros). Rust uses a proc macro that runs at `cargo build` time; JavaScript needs the same work done by external tooling that runs at `astrid build` time. This package is that tooling.
 
 Do not depend on this package directly from capsule code. It is invoked by the Rust kernel's `astrid-build` binary when it detects a `package.json + Capsule.toml` project, and emits the `wasm32-wasip2` component that the Rust side packs into the `.capsule` archive.
 

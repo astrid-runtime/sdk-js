@@ -6,7 +6,7 @@
 
 **The system library for Astrid OS user space, in JavaScript / TypeScript.**
 
-Sibling of [`astrid-sdk`](https://github.com/unicity-astrid/sdk-rust) (Rust). Same host ABI, same WIT contract, same `.capsule` archive shape — the kernel can't tell which language built the binary. Where the Rust SDK mirrors `std`, this one mirrors Node + WHATWG. Same semantics, idiom translated.
+Sibling of [`astrid-sdk`](https://github.com/astrid-runtime/sdk-rust) (Rust). Same host ABI, same WIT contract, same `.capsule` archive shape — the kernel can't tell which language built the binary. Where the Rust SDK mirrors `std`, this one mirrors Node + WHATWG. Same semantics, idiom translated.
 
 ## Where it fits
 

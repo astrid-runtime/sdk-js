@@ -32,7 +32,7 @@ import ts from "typescript";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SDK_PKG_DIR = resolve(HERE, "..", "..", "astrid-sdk");
-// Canonical host ABI lives in the unicity-astrid/wit submodule (mounted at
+// Canonical host ABI lives in the astrid-runtime/wit submodule (mounted at
 // repo-root/contracts/). Post per-domain WIT split (PR #752), each domain
 // is a separate `astrid:<domain>/host@1.0.0` package plus the foundation
 // `astrid:io/*@1.0.0` interfaces; componentize-js resolves the world the
@@ -317,7 +317,7 @@ async function bundle(entryPath, projectDir) {
 }
 
 function resolveWitPath() {
-  // Read straight from the canonical `unicity-astrid/wit` submodule. The
+  // Read straight from the canonical `astrid-runtime/wit` submodule. The
   // kernel side (cargo-published `astrid-sys` crate) keeps an in-tree copy
   // because `cargo package` only bundles files inside the crate dir; the
   // JS SDK has no such constraint, so we consume the submodule directly
@@ -327,7 +327,7 @@ function resolveWitPath() {
   if (!existsSync(join(CANONICAL_WIT_DIR, "ipc@1.0.0.wit"))) {
     die(
       `canonical host WIT missing or pre-split at ${CANONICAL_WIT_DIR}. ` +
-        `Expected per-domain layout from unicity-astrid/wit; run 'git submodule update --init --recursive' from the sdk-js repo root.`,
+        `Expected per-domain layout from astrid-runtime/wit; run 'git submodule update --init --recursive' from the sdk-js repo root.`,
     );
   }
   return CANONICAL_WIT_DIR;

@@ -4,9 +4,9 @@
 [![Node: >=20](https://img.shields.io/badge/Node-%3E%3D20-blue)](https://nodejs.org)
 [![TypeScript: 5.2+](https://img.shields.io/badge/TypeScript-5.2%2B-blue)](https://www.typescriptlang.org)
 
-**The JavaScript / TypeScript SDK for building [Astrid](https://github.com/unicity-astrid/astrid) capsules.**
+**The JavaScript / TypeScript SDK for building [Astrid](https://github.com/astrid-runtime/astrid) capsules.**
 
-Companion to [sdk-rust](https://github.com/unicity-astrid/sdk-rust). Same WIT contract, same wasip2 Component Model output, same `.capsule` archive format — your kernel can't tell which language built the binary. Where the Rust SDK feels like writing against `std`, this one feels like writing against `node:fs/promises` / WHATWG / Node's `EventEmitter`. Same host ABI, idiom translated.
+Companion to [sdk-rust](https://github.com/astrid-runtime/sdk-rust). Same WIT contract, same wasip2 Component Model output, same `.capsule` archive format — your kernel can't tell which language built the binary. Where the Rust SDK feels like writing against `std`, this one feels like writing against `node:fs/promises` / WHATWG / Node's `EventEmitter`. Same host ABI, idiom translated.
 
 ## Packages
 
