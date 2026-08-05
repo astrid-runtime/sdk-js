@@ -466,3 +466,17 @@ test("hook events reply on scoped topics and bridge dispatch remains fail-open",
   assert.equal(event.skip(), false);
   assert.equal(globalThis.__astridPublishes.length, publishCount);
 });
+
+test("method decorators reject symbol-named handlers before registration", async () => {
+  const tools = await loadModule("tool.js");
+  const capsule = await loadModule("capsule.js");
+  const context = {
+    name: Symbol("handler"),
+    private: false,
+    static: false,
+    addInitializer() { throw new Error("initializer should not be registered"); },
+  };
+  assert.throws(() => tools.hook("before_tool_call")(() => undefined, context), /string-named/);
+  assert.throws(() => tools.tool("run")(() => undefined, context), /string-named/);
+  assert.throws(() => capsule.install(() => undefined, context), /string-named/);
+});

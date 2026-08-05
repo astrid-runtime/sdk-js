@@ -52,14 +52,12 @@ export function tool(name: string, options: ToolOptions = {}) {
     _value: (this: This, args: Args) => Result | Promise<Result>,
     context: ClassMethodDecoratorContext<This, (this: This, args: Args) => Result | Promise<Result>>,
   ): void {
-    if (context.private || context.static) {
-      throw new Error(`@tool("${name}") must be applied to a public instance method.`);
-    }
+    const methodName = publicMethodName("tool", name, context);
     context.addInitializer(function () {
       const ctor = (this as object).constructor as CapsuleConstructor;
       recordTool(ctor, {
         name,
-        methodName: String(context.name),
+        methodName,
         mutable: options.mutable === true,
         description: options.description,
         inputSchema: options.inputSchema,
@@ -84,14 +82,12 @@ export function interceptor(topic: string, options: InterceptorOptions = {}) {
     _value: (this: This, payload: Payload) => Result | Promise<Result>,
     context: ClassMethodDecoratorContext<This, (this: This, payload: Payload) => Result | Promise<Result>>,
   ): void {
-    if (context.private || context.static) {
-      throw new Error(`@interceptor("${topic}") must be applied to a public instance method.`);
-    }
+    const methodName = publicMethodName("interceptor", topic, context);
     context.addInitializer(function () {
       const ctor = (this as object).constructor as CapsuleConstructor;
       recordInterceptor(ctor, {
         topic,
-        methodName: String(context.name),
+        methodName,
         mutable: options.mutable === true,
       });
     });
@@ -118,14 +114,12 @@ export function hook(name: string, options: HookOptions = {}) {
       (this: This, event: HookEvent) => HookResult | undefined | Promise<HookResult | undefined>
     >,
   ): void {
-    if (context.private || context.static) {
-      throw new Error(`@hook("${name}") must be applied to a public instance method.`);
-    }
+    const methodName = publicMethodName("hook", name, context);
     context.addInitializer(function () {
       const ctor = (this as object).constructor as CapsuleConstructor;
       recordHook(ctor, {
         name,
-        methodName: String(context.name),
+        methodName,
         mutable: options.mutable === true,
       });
     });
@@ -145,14 +139,12 @@ export function command(name: string, options: CommandOptions = {}) {
     _value: (this: This, payload: Payload) => Result | Promise<Result>,
     context: ClassMethodDecoratorContext<This, (this: This, payload: Payload) => Result | Promise<Result>>,
   ): void {
-    if (context.private || context.static) {
-      throw new Error(`@command("${name}") must be applied to a public instance method.`);
-    }
+    const methodName = publicMethodName("command", name, context);
     context.addInitializer(function () {
       const ctor = (this as object).constructor as CapsuleConstructor;
       recordCommand(ctor, {
         name,
-        methodName: String(context.name),
+        methodName,
         mutable: options.mutable === true,
       });
     });
@@ -163,4 +155,15 @@ function requireName(kind: string, name: string): void {
   if (typeof name !== "string" || name.length === 0) {
     throw new Error(`@${kind} requires a non-empty name (got ${JSON.stringify(name)})`);
   }
+}
+
+function publicMethodName(
+  kind: string,
+  name: string,
+  context: { name: string | symbol; private: boolean; static: boolean },
+): string {
+  if (context.private || context.static || typeof context.name !== "string") {
+    throw new Error(`@${kind}("${name}") must be applied to a string-named public instance method.`);
+  }
+  return context.name;
 }

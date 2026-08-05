@@ -32,7 +32,8 @@
     "clean": "rm -rf dist src/contracts.ts"
   },
   "devDependencies": {
-    "@unicity-astrid/build": "*"
+    "@unicity-astrid/build": "*",
+    "esbuild": "^0.24.0"
   },
   "engines": {
     "node": ">=20"
