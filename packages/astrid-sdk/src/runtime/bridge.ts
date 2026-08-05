@@ -209,10 +209,13 @@ export function createBridge(): Bridge {
       request = JSON.parse(decoder.decode(payload)) as HookEventRequest;
       if (
         typeof request.hook !== "string" ||
+        request.hook !== entry.name ||
         typeof request.payload !== "string" ||
         (request.correlation_id !== undefined && typeof request.correlation_id !== "string")
       ) {
-        throw new Error("expected { hook, payload, correlation_id? }");
+        throw new Error(
+          `expected { hook: ${JSON.stringify(entry.name)}, payload, correlation_id? }`,
+        );
       }
     } catch (error) {
       log.warn(`hook '${entry.name}': malformed event: ${(error as Error).message}`);

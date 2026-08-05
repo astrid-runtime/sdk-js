@@ -433,10 +433,10 @@ function encodeRequest(
     },
     options: {
       timeouts: hasTimeout ? {
-        connectMs: optionalMs(options.connectTimeoutMs),
-        firstByteMs: optionalMs(options.firstByteTimeoutMs),
-        betweenBytesMs: optionalMs(options.readTimeoutMs),
-        totalMs: optionalMs(options.timeoutMs),
+        connectMs: optionalMs("connectTimeoutMs", options.connectTimeoutMs),
+        firstByteMs: optionalMs("firstByteTimeoutMs", options.firstByteTimeoutMs),
+        betweenBytesMs: optionalMs("readTimeoutMs", options.readTimeoutMs),
+        totalMs: optionalMs("timeoutMs", options.timeoutMs),
       } : undefined,
       redirect: options.redirect,
       maxRedirects: options.maxRedirects === undefined ? undefined : u32("maxRedirects", options.maxRedirects),
@@ -500,8 +500,8 @@ function u32(name: string, value: number): number {
   return value;
 }
 
-function optionalMs(value: number | undefined): bigint | undefined {
-  return value === undefined ? undefined : BigInt(milliseconds("timeout", value));
+function optionalMs(name: string, value: number | undefined): bigint | undefined {
+  return value === undefined ? undefined : BigInt(milliseconds(name, value));
 }
 
 function optionalU64(name: string, value: number | bigint | undefined): bigint | undefined {

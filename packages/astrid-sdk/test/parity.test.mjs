@@ -184,6 +184,12 @@ test("HTTP fetch preserves Request consumption, abort, and body rules", async ()
   controller.abort(new Error("cancelled"));
   await assert.rejects(http.fetch("https://example.test", { signal: controller.signal }), /cancelled/);
   await assert.rejects(http.fetch("https://user:secret@example.test"), /cannot include credentials/);
+  for (const field of ["timeoutMs", "connectTimeoutMs", "firstByteTimeoutMs", "readTimeoutMs"]) {
+    await assert.rejects(
+      http.fetch("https://example.test", { [field]: Number.POSITIVE_INFINITY }),
+      new RegExp(field),
+    );
+  }
   assert.equal(globalThis.__astridHttpCalls.length, 1);
 });
 
@@ -396,6 +402,18 @@ test("hook events reply on scoped topics and bridge dispatch remains fail-open",
     { action: "continue", data: undefined },
   );
   assert.match(globalThis.__astridLogs.at(-1).message, /malformed event/);
+
+  const publishCountBeforeMismatch = globalThis.__astridPublishes.length;
+  assert.deepEqual(
+    module.bridge.astridHookTrigger("before_tool_call", new TextEncoder().encode(JSON.stringify({
+      hook: "after_tool_call",
+      payload: "{}",
+      correlation_id: "corr-mismatch",
+    }))),
+    { action: "continue", data: undefined },
+  );
+  assert.equal(globalThis.__astridPublishes.length, publishCountBeforeMismatch);
+  assert.match(globalThis.__astridLogs.at(-1).message, /hook: "before_tool_call"/);
 
   const { HookEvent } = await loadModule("hooks.js", {
     "astrid:ipc/host@1.0.0": ipcMock,
