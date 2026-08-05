@@ -270,6 +270,7 @@ test("process spawn follows Node background semantics and spawnSync captures out
   assert.throws(() => child.signal("SIGBOGUS"), /unsupported process signal/);
   assert.deepEqual(globalThis.__astridBackgroundRequest.args, ["--serve"]);
   child.close();
+  assert.equal(child.kill(), false);
   globalThis.__astridFailBackgroundSpawn = true;
   assert.throws(() => process.spawn("broken"), /process\.spawnBackground\("broken"\)/);
   globalThis.__astridFailBackgroundSpawn = false;
@@ -282,6 +283,7 @@ test("uplink IDs are opaque strings instead of wrapper objects", async () => {
     "astrid:uplink/host@1.0.0": `
       export function uplinkRegister() { return "uplink-1"; }
       export function uplinkSend(id, user, content) {
+        if (globalThis.__astridFailUplinkSend) throw new Error("send unavailable");
         globalThis.__astridUplinkSend = { id, user, content };
         return true;
       }
@@ -293,6 +295,9 @@ test("uplink IDs are opaque strings instead of wrapper objects", async () => {
   assert.deepEqual(globalThis.__astridUplinkSend, {
     id: "uplink-1", user: "user-1", content: "hello",
   });
+  globalThis.__astridFailUplinkSend = true;
+  assert.throws(() => uplink.send('uplink "one"', "user-1", "hello"), /uplink\.send\("uplink \\"one\\""\)/);
+  globalThis.__astridFailUplinkSend = false;
 });
 
 test("filesystem and environment helpers follow familiar JS standard-library shapes", async () => {
@@ -386,6 +391,7 @@ test("hook events reply on scoped topics and bridge dispatch remains fail-open",
     class Capsule {
       before(event) {
         globalThis.__astridHookPayload = event.json();
+        if (globalThis.__astridHookResultSet) return globalThis.__astridHookResult;
         return { skip: true };
       }
     }
@@ -438,6 +444,16 @@ test("hook events reply on scoped topics and bridge dispatch remains fail-open",
   );
   assert.equal(globalThis.__astridPublishes.length, publishCountBeforeMismatch);
   assert.match(globalThis.__astridLogs.at(-1).message, /hook: "before_tool_call"/);
+
+  globalThis.__astridHookResultSet = true;
+  for (const invalidResult of [null, "invalid", { skip: "yes" }]) {
+    globalThis.__astridHookResult = invalidResult;
+    const publishCountBeforeInvalidResult = globalThis.__astridPublishes.length;
+    module.bridge.astridHookTrigger("before_tool_call", payload);
+    assert.equal(globalThis.__astridPublishes.length, publishCountBeforeInvalidResult);
+  }
+  assert.match(globalThis.__astridLogs.at(-1).message, /hook result must contain/);
+  globalThis.__astridHookResultSet = false;
 
   const { HookEvent } = await loadModule("hooks.js", {
     "astrid:ipc/host@1.0.0": ipcMock,

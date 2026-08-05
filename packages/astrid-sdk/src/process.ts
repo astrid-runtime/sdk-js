@@ -35,6 +35,8 @@ import {
 } from "astrid:process/host@1.1.0";
 import { SysError, callHost } from "./errors.js";
 
+const encoder = new TextEncoder();
+
 const PROCESS_INTERNAL = Symbol("Astrid process resource");
 let createChildProcess: (inner: WitProcessHandle) => ChildProcess;
 let createPersistentProcess: (id: string) => PersistentProcess;
@@ -125,7 +127,7 @@ function buildSpawnRequest(
 
 function toWitFileInjection(file: InjectedFile): WitFileInjection {
   const content = typeof file.content === "string"
-    ? new TextEncoder().encode(file.content)
+    ? encoder.encode(file.content)
     : file.content;
   if ("env" in file && typeof file.env === "string" && file.env.length > 0) {
     return { content, placement: { tag: "env-pointer", val: file.env } };
@@ -214,6 +216,7 @@ export class ChildProcess {
 
   /** Node-compatible signal helper. Defaults to SIGTERM. */
   kill(signal: ProcessSignal = "SIGTERM"): boolean {
+    if (this.#inner === undefined) return false;
     this.signal(signal);
     return true;
   }

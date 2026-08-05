@@ -35,7 +35,7 @@ export function register(name: string, platform: string, profile: UplinkProfile)
  * principal).
  */
 export function send(uplink: UplinkId, platformUserId: string, content: string): boolean {
-  return callHost(`uplink.send(${uplink})`, () =>
+  return callHost(`uplink.send(${JSON.stringify(uplink)})`, () =>
     uplinkSend(uplink, platformUserId, content),
   );
 }

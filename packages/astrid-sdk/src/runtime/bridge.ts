@@ -233,8 +233,11 @@ export function createBridge(): Bridge {
 
     const event = new HookEvent(request);
     try {
-      const result = invoke(instance, entry.methodName, event) as HookResult | undefined;
-      if (result !== undefined) event.reply(result);
+      const result = invoke(instance, entry.methodName, event) as unknown;
+      if (result !== undefined && result !== null) {
+        if (!isHookResult(result)) throw new TypeError("hook result must contain boolean skip and/or string data");
+        event.reply(result);
+      }
     } catch (error) {
       log.warn(`hook '${entry.name}': handler or reply failed: ${(error as Error).message}`);
     }
@@ -333,6 +336,13 @@ export function createBridge(): Bridge {
       }
     },
   };
+}
+
+function isHookResult(value: unknown): value is HookResult {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const result = value as { skip?: unknown; data?: unknown };
+  return (result.skip === undefined || typeof result.skip === "boolean")
+    && (result.data === undefined || typeof result.data === "string");
 }
 
 /**
