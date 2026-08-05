@@ -5,6 +5,8 @@ in this file. The format follows [Keep a Changelog](https://keepachangelog.com/e
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-05
+
 ### Added
 
 - **Rust SDK behavioral parity with JavaScript-native APIs.** Added semantic lifecycle hooks through `@hook`, the `hooks` module, and `HookEvent`; `astrid:http@1.1.0` request controls and metadata; `astrid:process@1.1.0` read-only child file injection; and schema-versioned KV reads/migrations. The canonical surface is idiomatic JavaScript: `http.fetch()` returns a genuine WHATWG `Response`, the Rust-style fluent form is explicitly named `RequestBuilder`, `process.spawn()` returns a `ChildProcess` while `spawnSync()` captures output, KV results narrow on a camelCase `kind`, and hook events expose `payload`/`canReply`.
