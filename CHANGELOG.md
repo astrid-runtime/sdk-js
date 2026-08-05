@@ -22,6 +22,10 @@ in this file. The format follows [Keep a Changelog](https://keepachangelog.com/e
 - The build world now imports `astrid:http/host@1.1.0` and `astrid:process/host@1.1.0`, and stages each WIT package version in a separate dependency directory so frozen 1.0 and 1.1 contracts can coexist.
 - Canonical IPC contract types were regenerated from the same WIT revision used by current Rust SDK main, including the additive session-management records.
 
+### Security
+
+- Upgraded the build toolchain to patched `componentize-js` and `esbuild` lines, pinned the compatible audit-clean JCO release, and added a required dependency-audit CI job. This removes the vulnerable `weval → decompress` archive-extraction chain and the affected esbuild development-server version from both the workspace and downstream `@unicity-astrid/build` installations.
+
 ## [0.1.0] - 2026-05-26
 
 First non-prerelease. `0.1.0-alpha.0` was the test version; this is the
