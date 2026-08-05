@@ -452,6 +452,7 @@ function hostOpenMode(mode: OpenMode): "read" | "read-write" | "write" | "append
     case "r+": return "read-write";
     case "w": return "write";
     case "a": return "append";
+    default: throw SysError.api(`unsupported open mode: ${String(mode)}`);
   }
 }
 

@@ -353,9 +353,13 @@ async function bodyBytes(body: BodyInit | Uint8Array): Promise<Uint8Array> {
   if (ArrayBuffer.isView(body)) {
     return new Uint8Array(body.buffer, body.byteOffset, body.byteLength).slice();
   }
-  if (body instanceof URLSearchParams) return encoder.encode(body.toString());
-  if (body instanceof Blob) return new Uint8Array(await body.arrayBuffer());
-  if (body instanceof FormData) {
+  if (typeof URLSearchParams !== "undefined" && body instanceof URLSearchParams) {
+    return encoder.encode(body.toString());
+  }
+  if (typeof Blob !== "undefined" && body instanceof Blob) {
+    return new Uint8Array(await body.arrayBuffer());
+  }
+  if (typeof FormData !== "undefined" && body instanceof FormData) {
     throw new TypeError("FormData request bodies are not supported by the buffered Astrid HTTP host");
   }
   throw new TypeError("ReadableStream request bodies are not supported by the buffered Astrid HTTP host");
@@ -365,9 +369,9 @@ function setDefaultContentType(headers: Headers, body: BodyInit | Uint8Array): v
   if (headers.has("content-type")) return;
   if (typeof body === "string") {
     headers.set("content-type", "text/plain;charset=UTF-8");
-  } else if (body instanceof URLSearchParams) {
+  } else if (typeof URLSearchParams !== "undefined" && body instanceof URLSearchParams) {
     headers.set("content-type", "application/x-www-form-urlencoded;charset=UTF-8");
-  } else if (body instanceof Blob && body.type !== "") {
+  } else if (typeof Blob !== "undefined" && body instanceof Blob && body.type !== "") {
     headers.set("content-type", body.type);
   }
 }

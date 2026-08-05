@@ -590,5 +590,6 @@ function hostSignal(signal: ProcessSignal): "term" | "hup" | "usr1" | "usr2" | "
     case "SIGINT": return "int";
     case "SIGSTOP": return "stop";
     case "SIGCONT": return "cont";
+    default: throw SysError.api(`unsupported process signal: ${String(signal)}`);
   }
 }

@@ -156,7 +156,7 @@ test("HTTP fetch preserves Request consumption, abort, and body rules", async ()
       export function httpRequestOpts(request, options) {
         globalThis.__astridHttpCalls.push({ request, options });
         return {
-          status: 200, headers: [], body: new Uint8Array(),
+          status: 204, headers: [], body: new Uint8Array(),
           meta: { finalUrl: request.url, redirectCount: 0, elapsedMs: 0n, wireBytes: 0n },
         };
       }
@@ -190,7 +190,23 @@ test("HTTP fetch preserves Request consumption, abort, and body rules", async ()
       new RegExp(field),
     );
   }
-  assert.equal(globalThis.__astridHttpCalls.length, 1);
+  const webGlobals = {
+    URLSearchParams: globalThis.URLSearchParams,
+    Blob: globalThis.Blob,
+    FormData: globalThis.FormData,
+  };
+  try {
+    globalThis.URLSearchParams = undefined;
+    globalThis.Blob = undefined;
+    globalThis.FormData = undefined;
+    await http.fetch("https://example.test", {
+      method: "POST",
+      body: new Uint8Array([1, 2, 3]),
+    });
+  } finally {
+    Object.assign(globalThis, webGlobals);
+  }
+  assert.equal(globalThis.__astridHttpCalls.length, 2);
 });
 
 test("process spawn follows Node background semantics and spawnSync captures output", async () => {
@@ -250,6 +266,7 @@ test("process spawn follows Node background semantics and spawnSync captures out
   assert.equal(child.pid, 42);
   assert.equal(child.kill(), true);
   assert.equal(globalThis.__astridSignal, "term");
+  assert.throws(() => child.signal("SIGBOGUS"), /unsupported process signal/);
   assert.deepEqual(globalThis.__astridBackgroundRequest.args, ["--serve"]);
   child.close();
   assert.throws(() => new process.ChildProcess(Symbol(), {}), /cannot be constructed directly/);
@@ -303,6 +320,7 @@ test("filesystem and environment helpers follow familiar JS standard-library sha
   const entries = await fs.readdir("home://data", { withFileTypes: true });
   assert.equal(entries[0].isFile(), true);
   assert.equal(entries[1].isDirectory(), true);
+  await assert.rejects(fs.open("home://data/file.txt", "invalid"), /unsupported open mode/);
   await fs.mkdir("home://nested/path", { recursive: true });
   await fs.rm("home://nested", { recursive: true });
   await fs.unlink("home://file.txt");
