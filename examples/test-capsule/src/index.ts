@@ -16,7 +16,7 @@ import {
   ipc,
   type HookEvent,
   type HookResult,
-} from "@unicity-astrid/sdk";
+} from "@astrid-runtime/sdk";
 import type { events } from "../gen/events.js";
 type TestEvent = events.TestEvent;
 

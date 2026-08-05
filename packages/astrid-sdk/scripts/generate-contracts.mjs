@@ -8,7 +8,7 @@
  * same WIT file via the `wit_events!` proc macro.
  */
 
-import { codegenWitEvents } from "@unicity-astrid/build/src/wit-codegen.mjs";
+import { codegenWitEvents } from "@astrid-runtime/build/src/wit-codegen.mjs";
 import { mkdir, copyFile, rename, rm, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";

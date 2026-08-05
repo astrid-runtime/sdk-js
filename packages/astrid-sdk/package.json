@@ -1,7 +1,17 @@
 {
-  "name": "@unicity-astrid/sdk",
+  "name": "@astrid-runtime/sdk",
   "version": "0.2.0",
   "description": "System SDK for building user-space capsules for Astrid OS in JavaScript and TypeScript.",
+  "license": "MIT OR Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/astrid-runtime/sdk-js.git",
+    "directory": "packages/astrid-sdk"
+  },
+  "homepage": "https://github.com/astrid-runtime/sdk-js/tree/main/packages/astrid-sdk#readme",
+  "bugs": {
+    "url": "https://github.com/astrid-runtime/sdk-js/issues"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -22,7 +32,9 @@
   "files": [
     "dist",
     "src",
-    "wit-contracts"
+    "wit-contracts",
+    "LICENSE-MIT",
+    "LICENSE-APACHE"
   ],
   "scripts": {
     "prebuild": "node scripts/generate-contracts.mjs",
@@ -32,7 +44,7 @@
     "clean": "rm -rf dist src/contracts.ts"
   },
   "devDependencies": {
-    "@unicity-astrid/build": "*",
+    "@astrid-runtime/build": "*",
     "esbuild": "^0.25.12"
   },
   "engines": {

@@ -23,7 +23,7 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           BODY=$(awk "/^## \\[$VERSION\\]/{found=1; next} /^## \\[/{if(found) exit} found" CHANGELOG.md)
           if [ -z "$BODY" ]; then
-            BODY="See [CHANGELOG.md](https://github.com/unicity-astrid/sdk-js/blob/${GITHUB_REF_NAME}/CHANGELOG.md) for details."
+            BODY="See [CHANGELOG.md](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/blob/${GITHUB_REF_NAME}/CHANGELOG.md) for details."
           fi
           {
             echo "body<<EOF"

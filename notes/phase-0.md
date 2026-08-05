@@ -147,7 +147,7 @@ the full surface area regardless of what they call. Acceptable.
   `astrid:capsule/http` interface).
 - **Import path format**: `"astrid:capsule/<iface>@0.1.0"`. The SDK ships
   pre-written wrapper modules with these specifiers baked in; capsule authors
-  import from `@unicity-astrid/sdk` and never see the raw WIT paths.
+  import from `@astrid-runtime/sdk` and never see the raw WIT paths.
 - **JS engine**: StarlingMonkey (with weval AOT). Bundled by default.
 - **Binary size budget**: 11 MB per capsule. Plan section "Out of scope"
   already says we revisit AssemblyScript only if this becomes a real problem.

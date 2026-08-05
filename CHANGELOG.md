@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to `@unicity-astrid/sdk` and `@unicity-astrid/build` are documented
+All notable changes to `@astrid-runtime/sdk` and `@astrid-runtime/build` are documented
 in this file. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
@@ -17,6 +17,7 @@ in this file. The format follows [Keep a Changelog](https://keepachangelog.com/e
 
 ### Changed
 
+- **npm scope migration.** The packages now publish as `@astrid-runtime/sdk` and `@astrid-runtime/build`. The former `@unicity-astrid/*` packages remain at 0.1.0 only and will be deprecated on npm after the new packages are published.
 - **JavaScript standard-library makeover.** HTTP ABI conversion is no longer exposed on request objects; WHATWG request input, body consumption, abort, cloning, headers, and URL behavior are preserved. `env.get()` now distinguishes a missing key with `undefined`; `fs` gained Node-compatible recursive options, aliases, file-handle method names, overloads, and real `Dirent` predicates; `time.sleep()` supplies the promise-shaped timer path. Resource constructors are private and public declarations define language-native types instead of importing generated `astrid:*` host-binding modules. Deprecated aliases retain straightforward source migration where their semantics are not misleading.
 - **Intentional API breaks before stabilization.** `process.spawn()` now has Node background semantics (use `spawnSync()` for the previous captured behavior), process signals use Node names such as `SIGTERM`, `fs.open()` uses familiar `r`/`r+`/`w`/`a` flags, `UplinkId` is an opaque string rather than a Rust-style wrapper object, and versioned KV discriminants changed from `status: "needs-migration" | "not-found"` to `kind: "needsMigration" | "notFound"`. The misleading HTTP `Request`/`Response` builder aliases were removed in favor of `RequestBuilder`/`BufferedResponse`; `installGlobalFetch()` replaces the old polyfill-named installer.
 - The build world now imports `astrid:http/host@1.1.0` and `astrid:process/host@1.1.0`, and stages each WIT package version in a separate dependency directory so frozen 1.0 and 1.1 contracts can coexist.
@@ -24,7 +25,7 @@ in this file. The format follows [Keep a Changelog](https://keepachangelog.com/e
 
 ### Security
 
-- Upgraded the build toolchain to patched `componentize-js` and `esbuild` lines, pinned the compatible audit-clean JCO release, and added a required dependency-audit CI job. This removes the vulnerable `weval → decompress` archive-extraction chain and the affected esbuild development-server version from both the workspace and downstream `@unicity-astrid/build` installations.
+- Upgraded the build toolchain to patched `componentize-js` and `esbuild` lines, pinned the compatible audit-clean JCO release, and added a required dependency-audit CI job. This removes the vulnerable `weval → decompress` archive-extraction chain and the affected esbuild development-server version from both the workspace and downstream `@astrid-runtime/build` installations.
 
 ## [0.1.0] - 2026-05-26
 

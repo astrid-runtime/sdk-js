@@ -30,7 +30,7 @@ End-to-end build time: ~6 seconds (tsc + esbuild + componentize-js + archive).
 
 | File                          | Purpose                                                       |
 | ----------------------------- | ------------------------------------------------------------- |
-| `package.json`                | `@unicity-astrid/sdk` workspace package                            |
+| `package.json`                | `@astrid-runtime/sdk` workspace package                            |
 | `tsconfig.json`               | TS project config                                             |
 | `wit/astrid-capsule.wit`      | Host ABI (copied from sdk-rust)                               |
 | `wit-contracts/`              | `astrid-contracts.wit` (separated to keep WIT path single-pkg)|
@@ -50,14 +50,14 @@ End-to-end build time: ~6 seconds (tsc + esbuild + componentize-js + archive).
 
 | File                | Purpose                                                                 |
 | ------------------- | ----------------------------------------------------------------------- |
-| `package.json`      | `@unicity-astrid/build` package (deps: componentize-js, esbuild, typescript) |
+| `package.json`      | `@astrid-runtime/build` package (deps: componentize-js, esbuild, typescript) |
 | `src/index.mjs`     | Node CLI: tsc → emit entry → esbuild bundle → componentize → write wasm |
 
 ### Example test capsule (`sdk-js/examples/test-capsule/`)
 
 | File              | Purpose                                                |
 | ----------------- | ------------------------------------------------------ |
-| `package.json`    | Workspace member, depends on @unicity-astrid/sdk + build    |
+| `package.json`    | Workspace member, depends on @astrid-runtime/sdk + build    |
 | `tsconfig.json`   | TS project config                                      |
 | `Capsule.toml`    | Mirrors what a Rust capsule has                        |
 | `src/index.ts`    | TestCapsule with @tool increment/get_counter + @install + @upgrade |
@@ -69,7 +69,7 @@ End-to-end build time: ~6 seconds (tsc + esbuild + componentize-js + archive).
 | `Cargo.toml`           | Added `serde` workspace dep                                                         |
 | `src/lib.rs`           | Added `mod js;`                                                                     |
 | `src/build.rs`         | Replaced `"js"|"ts"|"node" => bail!` with `"js"|"ts" => crate::js::build(...)`. Tightened detect_project_type to require Capsule.toml alongside package.json. |
-| `src/js.rs` (NEW)      | Verifies Node, locates `@unicity-astrid/build` orchestrator via walk-up, shells out, packs the resulting wasm into a .capsule archive. |
+| `src/js.rs` (NEW)      | Verifies Node, locates `@astrid-runtime/build` orchestrator via walk-up, shells out, packs the resulting wasm into a .capsule archive. |
 
 ## Verified
 
@@ -97,7 +97,7 @@ These bit during the vertical slice and would have bitten Phase 2 worse:
    splicer treats the entire URL as a relative path. Switched to POSIX
    relative paths in the generated entry.
 
-3. **Bare-specifier imports (`@unicity-astrid/sdk`) don't resolve in componentize.**
+3. **Bare-specifier imports (`@astrid-runtime/sdk`) don't resolve in componentize.**
    ComponentizeJS doesn't run Node's resolver — bare specifiers reach Wizer
    as-is and fail. Solution: esbuild bundles everything into a single ESM
    file before componentize, with `external: ["astrid:*"]` to leave only the
@@ -113,7 +113,7 @@ These bit during the vertical slice and would have bitten Phase 2 worse:
 5. **Relative project paths leaked into the orchestrator lookup.** When the
    user invokes `astrid-build ../path/to/proj`, the relative path threaded
    through directory walks and child-process CWD changes, producing nonsense
-   like `examples/sdk-js/node_modules/@unicity-astrid/build`. Fix: canonicalize
+   like `examples/sdk-js/node_modules/@astrid-runtime/build`. Fix: canonicalize
    `project_dir` to absolute at the entry of `js::build`.
 
 Each of these is documented inline in the Rust + JS source as a comment so
@@ -145,7 +145,7 @@ an interactive shell session with the daemon).
 - **`disableFeatures` is fully locked in** the build orchestrator at
   `["stdio", "random", "clocks", "http", "fetch-event"]`. This was a Phase 0
   finding; now codified.
-- **esbuild is a required dependency of `@unicity-astrid/build`.** The plan called
+- **esbuild is a required dependency of `@astrid-runtime/build`.** The plan called
   for "esbuild or tsc" — turns out esbuild is non-optional (we need the
   bundle step to resolve bare specifiers). tsc still runs first for TS
   compilation; esbuild only bundles the already-compiled JS.
