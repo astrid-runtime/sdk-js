@@ -26,15 +26,15 @@ The SDK never reaches the network, filesystem, or any external service directly.
 
 | Module | Rust SDK | Node / WHATWG idiom |
 |---|---|---|
-| `fs` | `astrid_sdk::fs` (mirrors `std::fs`) | `node:fs/promises` shape: `readFile`/`writeFile`/`mkdir`/`stat` (returns `Stats` with `isFile()`/`isDirectory()`/`mtimeMs`)/`readdir`/`opendir` (AsyncIterable) |
+| `fs` | `astrid_sdk::fs` (mirrors `std::fs`) | `node:fs/promises` shape: overload-aware `readFile`, recursive `mkdir`/`rm`, real `Dirent` predicates, `copyFile`/`realpath`/`readlink`/`link`, and disposable `FileHandle` objects |
 | `net` | `astrid_sdk::net` (mirrors `std::sync::mpsc`) | mpsc-shaped errors (`RecvError` / `TryRecvError::{Empty,Closed}` / `SendError`) + `Symbol.asyncIterator` streams |
-| `process` | `astrid_sdk::process` | `node:child_process` conventions: `spawnSync(cmd, args, options) → ProcessResult` (`spawn` retained for parity), `spawnBackground` returns a disposable handle; `injectedFiles` is an object-union option rather than a Rust builder |
-| `env` | `astrid_sdk::env` (mirrors `std::env`) | `env.get(key)`, `CONFIG_SOCKET_PATH` constant |
-| `time` | `astrid_sdk::time` | `now() → Date`, `nowMs() → bigint` |
+| `process` | `astrid_sdk::process` | `node:child_process` conventions: `spawn()` returns a disposable `ChildProcess`; `spawnSync()` captures output; `injectedFiles` is a discriminated object union |
+| `env` | `astrid_sdk::env` (mirrors `std::env`) | `env.get(key) → string \| undefined`, `env.getOrThrow(key)`, `CONFIG_SOCKET_PATH` |
+| `time` | `astrid_sdk::time` | `now() → Date`, `sleep(ms) → Promise<void>`, plus precise bigint clocks |
 | `log` | `astrid_sdk::log` (mirrors `log` crate) | `log.{trace,debug,info,warn,error}`. **No** `globalThis.console` shadowing — the engine may already wire it. |
 | `ipc` | `astrid_sdk::ipc` | `publish`/`publishJson`; `subscribe(topic)` returns a `Subscription` with `.poll()`/`.recv(timeoutMs)` (full parity, surfaces `lagged`/`dropped`) AND `Symbol.asyncIterator` for convenience |
-| `kv` | `astrid_sdk::kv` | Map-shaped `get<T>(key)`/`set<T>`/`has`/`del`; versioned reads return a TypeScript discriminated union; raw byte variants remain available |
-| `http` | `astrid_sdk::http` (mirrors reqwest) | WHATWG-style `http.fetch()` plus the existing fluent `Request`/`send`/`streamStart` surface; host-specific deadlines, redirects, size caps, HTTPS-only and integrity controls use camel-cased option objects |
+| `kv` | `astrid_sdk::kv` | Map-shaped `get<T>(key)`/`set<T>`/`has`/`delete`; versioned reads narrow on `kind`; raw byte variants remain available |
+| `http` | `astrid_sdk::http` (mirrors reqwest) | `http.fetch()` returns a genuine WHATWG `Response`; the separate `RequestBuilder`/`send` surface provides fluent buffered calls without shadowing web-platform names |
 | `runtime` | `astrid_sdk::runtime` | `signalReady()`, `caller() → CallerContext`, `socketPath()` |
 | `capabilities` | `astrid_sdk::capabilities` | `check(sourceUuid, capability) → boolean` |
 | `elicit` | `astrid_sdk::elicit` | `secret`/`hasSecret`/`text`/`textWithDefault`/`select`/`array` (install/upgrade only) |
@@ -42,7 +42,7 @@ The SDK never reaches the network, filesystem, or any external service directly.
 | `approval` | `astrid_sdk::approval` | `request(action, resource) → boolean` |
 | `uplink` | `astrid_sdk::uplink` | `register(name, platform, profile) → UplinkId`, `send(id, userId, content) → boolean` |
 | `interceptors` | `astrid_sdk::interceptors` | `bindings()` / `poll(bindings, handler)` — usually unneeded; `@interceptor` decorator handles dispatch |
-| `hooks` | `astrid_sdk::hook` | `HookEvent` with properties, `.json()`, `.reply()`, `.skip()`, `.respond()`; `@hook` handles fail-open dispatch and scoped replies |
+| `hooks` | `astrid_sdk::hook` | `HookEvent` with `.payload`, `.json()`, `.canReply`, `.reply()`, `.skip()`, `.respond()`; `@hook` handles fail-open dispatch and scoped replies |
 
 ## Decorators (replaces `#[capsule]` macro)
 
@@ -95,15 +95,54 @@ The Rust SDK returns `Result<T, SysError>`. This SDK **throws** a `SysError exte
 
 ## Versioned KV storage
 
-`kv.setVersioned` writes the same `{"__sv": version, "data": value}` envelope as Rust. `kv.getVersioned` returns a discriminated union (`current`, `needs-migration`, `unversioned`, or `not-found`) for exhaustive narrowing. `kv.getVersionedOrMigrate` writes a successful migration back at the current version and rejects forward-version data.
+`kv.setVersioned` writes the same `{"__sv": version, "data": value}` envelope as Rust. `kv.getVersioned` returns a `kind`-discriminated union (`current`, `needsMigration`, `unversioned`, or `notFound`) for exhaustive narrowing. `kv.getVersionedOrMigrate` writes a successful migration back at the current version and rejects forward-version data.
+
+```typescript
+const settings = kv.getVersioned<Settings>("settings", 3);
+switch (settings.kind) {
+  case "current":
+    return settings.value;
+  case "needsMigration":
+    return migrate(settings.value, settings.storedVersion);
+  case "unversioned":
+  case "notFound":
+    return defaults;
+}
+```
+
+## HTTP and child processes
+
+The main HTTP path uses web-platform objects. Astrid controls are additive and
+the returned value remains an ordinary `Response`, so `bodyUsed`, `clone()`,
+`text()`, `json()`, `blob()`, and stream consumption behave normally.
+
+```typescript
+const response = await http.fetch("https://api.example/v1/items", {
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({ name: "capsule" }),
+  timeoutMs: 5_000,
+  maxResponseBytes: 1_000_000,
+  httpsOnly: true,
+});
+
+if (!response.ok) throw new Error(`HTTP ${response.status}`);
+const item = await response.json();
+
+using child = process.spawn("worker", ["--serve"]);
+child.writeStdin(new TextEncoder().encode("ready\n"));
+const exit = child.wait(10_000);
+
+const captured = process.spawnSync("worker", ["--version"]);
+```
 
 ## Lifecycle hooks
 
-`@hook("before_tool_call")` receives a `HookEvent`. Return `{ skip: true }` or `{ data: "..." }` to publish on the correlation-scoped response topic, or return `undefined` to observe without replying. Fire-and-forget events make manual reply helpers no-ops. Malformed payloads and handler/reply failures are logged and return `continue`, preserving the hook bridge's fail-open contract.
+`@hook("before_tool_call")` receives a `HookEvent`. Return `{ skip: true }` or `{ data: "..." }` to publish on the correlation-scoped response topic, or return `undefined` to observe without replying. `event.canReply` identifies fire-and-forget events; `reply`, `skip`, and `respond` return whether they published. Malformed payloads and handler/reply failures are logged and return `continue`, preserving the hook bridge's fail-open contract.
 
 ## Async model
 
-The Rust SDK is synchronous because WASM exports are synchronous. The JS SDK is async (`await fs.readFile(...)`) because that's what Node developers expect. ComponentizeJS's syncify makes awaits backed by host imports settle synchronously at the WASM boundary. Use `await` freely inside `@tool` / `@interceptor` / `@run` handlers — the engine settles them before the host returns.
+The Rust SDK is synchronous because WASM exports are synchronous. APIs that are conventionally promise-based in JavaScript, such as `fs.readFile`, `http.fetch`, and `time.sleep`, retain that shape. Explicitly synchronous APIs say so (`process.spawnSync`); resource methods expose the underlying bounded host operation directly. ComponentizeJS's syncify settles promises at the WASM boundary, so `await` works normally inside `@tool`, `@interceptor`, and `@run` handlers.
 
 `@run` handlers that loop forever (`while (true) { await ipc.recv(...) }`) block the WIT `run` export until the loop exits, matching the Rust SDK's daemon-style capsules exactly.
 

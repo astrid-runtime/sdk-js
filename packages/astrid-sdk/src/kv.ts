@@ -29,10 +29,10 @@ export interface KeyPage {
 
 /** Result of reading a schema-versioned JSON value. */
 export type Versioned<T> =
-  | { status: "current"; value: T }
-  | { status: "needs-migration"; value: unknown; storedVersion: number }
-  | { status: "unversioned"; value: unknown }
-  | { status: "not-found" };
+  | { kind: "current"; value: T }
+  | { kind: "needsMigration"; value: unknown; storedVersion: number }
+  | { kind: "unversioned"; value: unknown }
+  | { kind: "notFound" };
 
 export function getBytes(key: string): Uint8Array | undefined {
   return callHost(`kv.getBytes(${quote(key)})`, () => hostGet(key));
@@ -70,6 +70,9 @@ export function set<T>(key: string, value: T): void {
 export function del(key: string): void {
   callHost(`kv.delete(${quote(key)})`, () => hostDelete(key));
 }
+
+/** Map-compatible name for deleting a key. */
+export { del as delete };
 
 export function listKeys(prefix: string): string[] {
   return callHost(`kv.listKeys(${quote(prefix)})`, () => hostListKeys(prefix));
@@ -138,7 +141,7 @@ export function setVersioned<T>(key: string, value: T, version: number): void {
 export function getVersioned<T>(key: string, currentVersion: number): Versioned<T> {
   assertSchemaVersion("currentVersion", currentVersion);
   const bytes = getBytes(key);
-  if (bytes === undefined || bytes.length === 0) return { status: "not-found" };
+  if (bytes === undefined || bytes.length === 0) return { kind: "notFound" };
 
   let value: unknown;
   try {
@@ -148,7 +151,7 @@ export function getVersioned<T>(key: string, currentVersion: number): Versioned<
   }
 
   if (!isRecord(value) || !("__sv" in value)) {
-    return { status: "unversioned", value };
+    return { kind: "unversioned", value };
   }
   if (!("data" in value) || !isSchemaVersion(value.__sv)) {
     throw SysError.api(
@@ -161,9 +164,9 @@ export function getVersioned<T>(key: string, currentVersion: number): Versioned<
     );
   }
   if (value.__sv < currentVersion) {
-    return { status: "needs-migration", value: value.data, storedVersion: value.__sv };
+    return { kind: "needsMigration", value: value.data, storedVersion: value.__sv };
   }
-  return { status: "current", value: value.data as T };
+  return { kind: "current", value: value.data as T };
 }
 
 /** Read versioned data, migrating and writing back older or legacy values. */
@@ -173,12 +176,12 @@ export function getVersionedOrMigrate<T>(
   migrate: (value: unknown, storedVersion: number) => T,
 ): T | undefined {
   const found = getVersioned<T>(key, currentVersion);
-  switch (found.status) {
+  switch (found.kind) {
     case "current":
       return found.value;
-    case "not-found":
+    case "notFound":
       return undefined;
-    case "needs-migration": {
+    case "needsMigration": {
       const migrated = migrate(found.value, found.storedVersion);
       setVersioned(key, migrated, currentVersion);
       return migrated;

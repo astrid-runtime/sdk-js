@@ -6,7 +6,7 @@
 
 **The JavaScript / TypeScript SDK for building [Astrid](https://github.com/astrid-runtime/astrid) capsules.**
 
-Companion to [sdk-rust](https://github.com/astrid-runtime/sdk-rust). Same WIT contract, same wasip2 Component Model output, same `.capsule` archive format — your kernel can't tell which language built the binary. Where the Rust SDK feels like writing against `std`, this one feels like writing against `node:fs/promises` / WHATWG / Node's `EventEmitter`. Same host ABI, idiom translated.
+Companion to [sdk-rust](https://github.com/astrid-runtime/sdk-rust). Same WIT contract, same wasip2 Component Model output, same `.capsule` archive format — your kernel can't tell which language built the binary. Where the Rust SDK feels like writing against `std`, this one uses `node:fs/promises`, `node:child_process`, WHATWG fetch, async iterators, and disposable resource handles. Same host ABI, idiom translated.
 
 ## Packages
 

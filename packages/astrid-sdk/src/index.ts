@@ -48,15 +48,17 @@ export type {
 } from "./ipc.js";
 export type { Stats, Dirent, FileHandle, OpenMode, FileType } from "./fs.js";
 export type {
-  Request as HttpRequest,
-  Response as HttpResponse,
+  RequestBuilder,
+  BufferedResponse,
   HttpMethod,
   RedirectPolicy,
   HttpRequestOptions,
   HttpStreamHandle,
   StreamStart,
-  FetchInit,
+  FetchOptions,
+  FetchInput,
   FetchResponse,
+  ResponseMetadata,
 } from "./http.js";
 export type {
   UnixListener,
@@ -76,6 +78,7 @@ export type {
   ProcessResult,
   ProcessLogs,
   KillResult,
+  ChildProcess,
   BackgroundProcessHandle,
   SpawnOptions,
   InjectedFile,

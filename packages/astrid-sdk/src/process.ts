@@ -28,26 +28,30 @@ import {
   stop as hostStop,
   releaseProcess as hostReleaseProcess,
   type ProcessHandle as WitProcessHandle,
-  type ProcessSignal,
   type SpawnRequest,
   type ExitInfo,
   type ProcessInfo as WitProcessInfo,
-  type ProcessPhase,
-  type LogStream,
-  type LogCursor,
-  type OverflowPolicy,
   type FileInjection as WitFileInjection,
 } from "astrid:process/host@1.1.0";
 import { SysError, callHost } from "./errors.js";
 
-export type {
-  ProcessSignal,
-  EnvVar,
-  ProcessPhase,
-  LogStream,
-  LogCursor,
-  OverflowPolicy,
-} from "astrid:process/host@1.1.0";
+const PROCESS_INTERNAL = Symbol("Astrid process resource");
+let createChildProcess: (inner: WitProcessHandle) => ChildProcess;
+let createPersistentProcess: (id: string) => PersistentProcess;
+
+export type ProcessSignal =
+  | "SIGTERM"
+  | "SIGHUP"
+  | "SIGUSR1"
+  | "SIGUSR2"
+  | "SIGINT"
+  | "SIGSTOP"
+  | "SIGCONT";
+export type ProcessPhase = "starting" | "running" | "exited";
+export type LogStream = "stdout" | "stderr";
+export type OverflowPolicy = "drop-oldest" | "backpressure";
+export interface LogCursor { token: string | undefined; }
+export interface EnvVar { key: string; value: string; }
 
 export interface ProcessResult {
   stdout: string;
@@ -107,8 +111,7 @@ function buildSpawnRequest(
       : [],
     cwd: options?.cwd,
     fileInjections: (options?.injectedFiles ?? []).map(toWitFileInjection),
-    // Persistent-only fields — left unset for the ephemeral `spawn` /
-    // `spawnBackground` paths (the host ignores them there anyway).
+    // Persistent-only fields — left unset for ephemeral process paths.
     limits: undefined,
     label: undefined,
     keepStdinOpen: undefined,
@@ -137,8 +140,8 @@ function unpackExit(exit: ExitInfo): { exitCode: number | undefined; signal: num
   return { exitCode: exit.exitCode, signal: exit.signal };
 }
 
-/** Spawn a process and block until it exits. */
-export function spawn(
+/** Run a process to completion and capture its output. */
+export function spawnSync(
   cmd: string,
   args: string[] = [],
   options?: SpawnOptions,
@@ -154,28 +157,33 @@ export function spawn(
   };
 }
 
-/** Node-compatible name for the blocking spawn helper. */
-export const spawnSync = spawn;
-
-/** Spawn a background process. Returns a resource handle. */
-export function spawnBackground(
+/**
+ * Spawn a child process and return immediately with a disposable handle.
+ * This follows `node:child_process`: use {@link spawnSync} for captured,
+ * run-to-completion execution.
+ */
+export function spawn(
   cmd: string,
   args: string[] = [],
   options?: SpawnOptions,
-): BackgroundProcessHandle {
+): ChildProcess {
   const request = buildSpawnRequest(cmd, args, options);
-  const inner = callHost(`process.spawnBackground(${JSON.stringify(cmd)})`, () =>
+  const inner = callHost(`process.spawn(${JSON.stringify(cmd)})`, () =>
     hostSpawnBackground(request),
   );
-  return new BackgroundProcessHandle(inner);
+  return createChildProcess(inner);
 }
 
-export class BackgroundProcessHandle {
+/** An ephemeral child-process handle owned by the current capsule instance. */
+export class ChildProcess {
   #inner: WitProcessHandle | undefined;
 
-  constructor(inner: WitProcessHandle) {
+  private constructor(token: typeof PROCESS_INTERNAL, inner: WitProcessHandle) {
+    if (token !== PROCESS_INTERNAL) throw new TypeError("ChildProcess cannot be constructed directly");
     this.#inner = inner;
   }
+
+  static { createChildProcess = (inner) => new ChildProcess(PROCESS_INTERNAL, inner); }
 
   /** Drain buffered stdout/stderr since the last read. */
   readLogs(): ProcessLogs {
@@ -199,13 +207,19 @@ export class BackgroundProcessHandle {
     callHost("process.closeStdin", () => this.#requireInner().closeStdin());
   }
 
-  /** Send a signal (fire-and-forget). Use {@link kill} for SIGKILL + log drainage. */
+  /** Send a signal (fire-and-forget). */
   signal(sig: ProcessSignal): void {
-    callHost(`process.signal(${sig})`, () => this.#requireInner().signal(sig));
+    callHost(`process.signal(${sig})`, () => this.#requireInner().signal(hostSignal(sig)));
   }
 
-  /** Send SIGKILL and drain remaining output. */
-  kill(): KillResult {
+  /** Node-compatible signal helper. Defaults to SIGTERM. */
+  kill(signal: ProcessSignal = "SIGTERM"): boolean {
+    this.signal(signal);
+    return true;
+  }
+
+  /** Send SIGKILL and atomically drain the child's remaining output. */
+  killAndCollect(): KillResult {
     const result = callHost("process.kill", () => this.#requireInner().kill());
     return {
       killed: result.killed,
@@ -242,9 +256,12 @@ export class BackgroundProcessHandle {
   }
 
   /** OS-level PID. Throws if the process has already been reaped. */
-  osPid(): number {
+  get pid(): number {
     return callHost("process.osPid", () => this.#requireInner().osPid());
   }
+
+  /** @deprecated Use {@link pid}. */
+  osPid(): number { return this.pid; }
 
   close(): void {
     if (this.#inner === undefined) return;
@@ -262,16 +279,22 @@ export class BackgroundProcessHandle {
   }
 
   #requireInner(): WitProcessHandle {
-    if (this.#inner === undefined) throw SysError.api("ProcessHandle is closed");
+    if (this.#inner === undefined) throw SysError.api("ChildProcess is closed");
     return this.#inner;
   }
 }
+
+/** @deprecated Use {@link spawn}; it now has Node-compatible background semantics. */
+export const spawnBackground = spawn;
+
+/** @deprecated Use {@link ChildProcess}. */
+export { ChildProcess as BackgroundProcessHandle };
 
 // ============================================================
 // Persistent tier
 //
 // A persistent process survives the pooled, stateless instance that spawned
-// it (unlike the ephemeral `BackgroundProcessHandle`, whose kernel resource is
+// it (unlike the ephemeral `ChildProcess`, whose kernel resource is
 // reaped on instance reset). It is keyed by an opaque process id that any
 // later invocation of the same capsule+principal can `attach` to.
 // ============================================================
@@ -406,7 +429,7 @@ function unpackInfo(i: WitProcessInfo): PersistentProcessInfo {
  * Spawn a PERSISTENT background process whose lifetime is decoupled from the
  * calling instance. Returns a {@link PersistentProcess} keyed by an opaque id
  * that any LATER invocation of the same capsule+principal can {@link attach}
- * to — unlike {@link spawnBackground}, it survives the pooled instance being
+ * to — unlike {@link spawn}, it survives the pooled instance being
  * reset between tool invocations.
  */
 export function spawnPersistent(
@@ -418,13 +441,13 @@ export function spawnPersistent(
   const id = callHost(`process.spawnPersistent(${JSON.stringify(cmd)})`, () =>
     hostSpawnPersistent(request),
   );
-  return new PersistentProcess(id);
+  return createPersistentProcess(id);
 }
 
 /**
  * A handle to a PERSISTENT background process, keyed by its opaque id.
  *
- * Unlike {@link BackgroundProcessHandle}, this does NOT reap the underlying
+ * Unlike {@link ChildProcess}, this does NOT reap the underlying
  * process when it goes out of scope — it is a detached view. The process is
  * reaped only by {@link stop}, {@link release}, or the host's idle /
  * max-lifetime / exit-retention TTLs. Obtain one from {@link spawnPersistent}
@@ -433,9 +456,12 @@ export function spawnPersistent(
 export class PersistentProcess {
   readonly #id: string;
 
-  constructor(id: string) {
+  private constructor(token: typeof PROCESS_INTERNAL, id: string) {
+    if (token !== PROCESS_INTERNAL) throw new TypeError("PersistentProcess cannot be constructed directly");
     this.#id = id;
   }
+
+  static { createPersistentProcess = (id) => new PersistentProcess(PROCESS_INTERNAL, id); }
 
   /** The opaque process id — persist it (e.g. in KV) to {@link attach} later. */
   get id(): string {
@@ -491,7 +517,7 @@ export class PersistentProcess {
 
   /** Send a fire-and-forget signal. */
   signal(sig: ProcessSignal): void {
-    callHost(`process.signal(${sig})`, () => hostSignalById(this.#id, sig));
+    callHost(`process.signal(${sig})`, () => hostSignalById(this.#id, hostSignal(sig)));
   }
 
   /**
@@ -537,7 +563,7 @@ export class PersistentProcess {
  * an id that is unknown / not yours / reaped surfaces `no-such-process` on use.
  */
 export function attach(id: string): PersistentProcess {
-  return new PersistentProcess(id);
+  return createPersistentProcess(id);
 }
 
 /**
@@ -553,4 +579,16 @@ export function listProcesses(labelFilter?: string): PersistentProcessInfo[] {
 /** Batch status for many ids in one host call. Unknown / unowned ids are absent. */
 export function statusMany(ids: string[]): PersistentProcessInfo[] {
   return callHost("process.statusMany", () => hostStatusMany(ids)).map(unpackInfo);
+}
+
+function hostSignal(signal: ProcessSignal): "term" | "hup" | "usr1" | "usr2" | "int" | "stop" | "cont" {
+  switch (signal) {
+    case "SIGTERM": return "term";
+    case "SIGHUP": return "hup";
+    case "SIGUSR1": return "usr1";
+    case "SIGUSR2": return "usr2";
+    case "SIGINT": return "int";
+    case "SIGSTOP": return "stop";
+    case "SIGCONT": return "cont";
+  }
 }

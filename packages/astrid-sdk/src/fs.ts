@@ -33,15 +33,27 @@ import {
   fsHardLink as hostHardLink,
   type FileStat,
   type FileHandle as WitFileHandle,
-  type OpenMode,
-  type FileType,
 } from "astrid:fs/host@1.0.0";
 import { SysError, callHost } from "./errors.js";
 
 const decoder = new TextDecoder();
 const encoder = new TextEncoder();
+const FS_INTERNAL = Symbol("Astrid filesystem resource");
+let createStats: (stat: FileStat) => Stats;
+let createDirent: (parentPath: string, name: string, kind: FileType) => Dirent;
+let createFileHandle: (inner: WitFileHandle, path: string) => FileHandle;
 
-export type { OpenMode, FileType } from "astrid:fs/host@1.0.0";
+/** Supported `node:fs`-style open flags. */
+export type OpenMode = "r" | "r+" | "w" | "a";
+export type FileType =
+  | "type-unknown"
+  | "regular"
+  | "directory"
+  | "symlink"
+  | "block-device"
+  | "character-device"
+  | "fifo"
+  | "socket";
 
 /**
  * Stat result. Shaped like Node's `fs.Stats` for the fields the Astrid VFS
@@ -56,7 +68,9 @@ export class Stats {
   readonly birthtimeMs: number | undefined;
   readonly atimeMs: number | undefined;
 
-  constructor(stat: FileStat) {
+  private constructor(token: typeof FS_INTERNAL, value: unknown) {
+    if (token !== FS_INTERNAL) throw new TypeError("Stats cannot be constructed directly");
+    const stat = value as FileStat;
     this.size = stat.size;
     this.mode = stat.mode;
     this.kind = stat.kind;
@@ -64,6 +78,8 @@ export class Stats {
     this.birthtimeMs = datetimeToMs(stat.created);
     this.atimeMs = datetimeToMs(stat.accessed);
   }
+
+  static { createStats = (stat) => new Stats(FS_INTERNAL, stat); }
 
   isFile(): boolean {
     return this.kind === "regular";
@@ -77,6 +93,11 @@ export class Stats {
     return this.kind === "symlink";
   }
 
+  isBlockDevice(): boolean { return this.kind === "block-device"; }
+  isCharacterDevice(): boolean { return this.kind === "character-device"; }
+  isFIFO(): boolean { return this.kind === "fifo"; }
+  isSocket(): boolean { return this.kind === "socket"; }
+
   isEmpty(): boolean {
     return this.size === 0n;
   }
@@ -87,12 +108,25 @@ export class Dirent {
   readonly name: string;
   readonly path: string;
   readonly parentPath: string;
+  readonly #kind: FileType;
 
-  constructor(parentPath: string, name: string) {
+  private constructor(token: typeof FS_INTERNAL, parentPath: string, name: string, kind: FileType) {
+    if (token !== FS_INTERNAL) throw new TypeError("Dirent cannot be constructed directly");
     this.name = name;
     this.parentPath = parentPath;
     this.path = parentPath.endsWith("/") ? parentPath + name : `${parentPath}/${name}`;
+    this.#kind = kind;
   }
+
+  static { createDirent = (parentPath, name, kind) => new Dirent(FS_INTERNAL, parentPath, name, kind); }
+
+  isFile(): boolean { return this.#kind === "regular"; }
+  isDirectory(): boolean { return this.#kind === "directory"; }
+  isSymbolicLink(): boolean { return this.#kind === "symlink"; }
+  isBlockDevice(): boolean { return this.#kind === "block-device"; }
+  isCharacterDevice(): boolean { return this.#kind === "character-device"; }
+  isFIFO(): boolean { return this.#kind === "fifo"; }
+  isSocket(): boolean { return this.#kind === "socket"; }
 }
 
 /**
@@ -101,7 +135,7 @@ export class Dirent {
  * `Symbol.dispose` or `.close()`. Per-capsule cap: 16 open file handles.
  *
  * ```ts
- * using f = await fs.open("workspace://data.bin", "read-write");
+ * using f = await fs.open("workspace://data.bin", "r+");
  * await f.writeAt(0n, new TextEncoder().encode("hello"));
  * ```
  */
@@ -109,10 +143,13 @@ export class FileHandle {
   #inner: WitFileHandle | undefined;
   readonly path: string;
 
-  constructor(inner: WitFileHandle, path: string) {
-    this.#inner = inner;
+  private constructor(token: typeof FS_INTERNAL, value: unknown, path: string) {
+    if (token !== FS_INTERNAL) throw new TypeError("FileHandle cannot be constructed directly");
+    this.#inner = value as WitFileHandle;
     this.path = path;
   }
+
+  static { createFileHandle = (inner, path) => new FileHandle(FS_INTERNAL, inner, path); }
 
   /** Read up to `maxBytes` from `offset`. Empty result signals EOF at that offset. */
   async readAt(offset: bigint, maxBytes: number): Promise<Uint8Array> {
@@ -135,6 +172,9 @@ export class FileHandle {
     );
   }
 
+  /** Node-compatible alias for {@link syncData}. */
+  async datasync(): Promise<void> { return this.syncData(); }
+
   /** Flush both data and metadata to disk — `fsync(2)`. */
   async syncAll(): Promise<void> {
     callHost(`fs.FileHandle.syncAll(${quote(this.path)})`, () =>
@@ -142,12 +182,15 @@ export class FileHandle {
     );
   }
 
+  /** Node-compatible alias for {@link syncAll}. */
+  async sync(): Promise<void> { return this.syncAll(); }
+
   /** Race-free counterpart to {@link stat} on the path. */
   async stat(): Promise<Stats> {
     const raw = callHost(`fs.FileHandle.stat(${quote(this.path)})`, () =>
       this.#requireInner().stat(),
     );
-    return new Stats(raw);
+    return createStats(raw);
   }
 
   /** Truncate or extend the file to `size` bytes. Extending past end fills with zeros. */
@@ -155,6 +198,16 @@ export class FileHandle {
     callHost(`fs.FileHandle.setLen(${quote(this.path)})`, () =>
       this.#requireInner().setLen(size),
     );
+  }
+
+  /** Node-compatible name for resizing a file. */
+  async truncate(size: number | bigint = 0): Promise<void> {
+    if (typeof size === "number" && (!Number.isSafeInteger(size) || size < 0)) {
+      throw SysError.api("file length must be a non-negative safe integer or bigint");
+    }
+    const length = typeof size === "bigint" ? size : BigInt(size);
+    if (length < 0n) throw SysError.api("file length must be non-negative");
+    return this.setLen(length);
   }
 
   close(): void {
@@ -190,10 +243,18 @@ export interface ReaddirOptions {
   withFileTypes?: boolean;
 }
 
+export interface MkdirOptions {
+  recursive?: boolean;
+}
+
+export interface RmOptions {
+  recursive?: boolean;
+}
+
 /** Open a file by path. Required capability depends on `mode`. */
 export async function open(path: string, mode: OpenMode): Promise<FileHandle> {
-  const inner = callHost(`fs.open(${quote(path)})`, () => hostOpen(path, mode));
-  return new FileHandle(inner, path);
+  const inner = callHost(`fs.open(${quote(path)})`, () => hostOpen(path, hostOpenMode(mode)));
+  return createFileHandle(inner, path);
 }
 
 export async function exists(path: string): Promise<boolean> {
@@ -202,15 +263,17 @@ export async function exists(path: string): Promise<boolean> {
 
 export async function stat(path: string): Promise<Stats> {
   const raw = callHost(`fs.stat(${quote(path)})`, () => hostStat(path));
-  return new Stats(raw);
+  return createStats(raw);
 }
 
 /** Stat without following symlinks — `lstat(2)`. */
 export async function lstat(path: string): Promise<Stats> {
   const raw = callHost(`fs.lstat(${quote(path)})`, () => hostStatSymlink(path));
-  return new Stats(raw);
+  return createStats(raw);
 }
 
+export async function readFile(path: string): Promise<Uint8Array>;
+export async function readFile(path: string, options: { encoding: "utf8" }): Promise<string>;
 export async function readFile(
   path: string,
   options?: ReadFileOptions,
@@ -246,8 +309,12 @@ export async function appendFile(path: string, data: string | Uint8Array): Promi
  * Fails with `already-exists` if the path exists. Use {@link mkdirAll} for
  * idempotent "ensure-exists" semantics.
  */
-export async function mkdir(path: string): Promise<void> {
-  callHost(`fs.mkdir(${quote(path)})`, () => hostMkdir(path));
+export async function mkdir(path: string, options?: MkdirOptions): Promise<void> {
+  if (options?.recursive === true) {
+    callHost(`fs.mkdir(${quote(path)}, recursive)`, () => hostMkdirAll(path));
+  } else {
+    callHost(`fs.mkdir(${quote(path)})`, () => hostMkdir(path));
+  }
 }
 
 /** Create a directory and all missing parents. Idempotent. */
@@ -256,12 +323,23 @@ export async function mkdirAll(path: string): Promise<void> {
 }
 
 /** Remove a file. Mirrors `fs.unlink` / `fs.rm` (file-only). */
-export async function rm(path: string): Promise<void> {
-  callHost(`fs.rm(${quote(path)})`, () => hostUnlink(path));
+export async function rm(path: string, options?: RmOptions): Promise<void> {
+  if (options?.recursive === true) {
+    const entry = callHost(`fs.lstat(${quote(path)})`, () => hostStatSymlink(path));
+    if (entry.kind === "directory") {
+      callHost(`fs.rm(${quote(path)}, recursive)`, () => hostRemoveDirAll(path));
+    } else {
+      callHost(`fs.rm(${quote(path)}, recursive)`, () => hostUnlink(path));
+    }
+  } else {
+    callHost(`fs.rm(${quote(path)})`, () => hostUnlink(path));
+  }
 }
 
-/** Alias for {@link rm} matching Node's `fs.unlink`. */
-export const unlink = rm;
+/** Remove a file. */
+export async function unlink(path: string): Promise<void> {
+  callHost(`fs.unlink(${quote(path)})`, () => hostUnlink(path));
+}
 
 /**
  * Remove a directory and all its contents recursively. Refuses to traverse
@@ -276,6 +354,9 @@ export async function copy(src: string, dst: string): Promise<void> {
   callHost(`fs.copy(${quote(src)} -> ${quote(dst)})`, () => hostCopy(src, dst));
 }
 
+/** Node-compatible alias for {@link copy}. */
+export const copyFile = copy;
+
 /** Rename (move) within the same VFS scheme. Cross-scheme returns `cross-vfs`. */
 export async function rename(src: string, dst: string): Promise<void> {
   callHost(`fs.rename(${quote(src)} -> ${quote(dst)})`, () => hostRename(src, dst));
@@ -289,10 +370,16 @@ export async function canonicalize(path: string): Promise<string> {
   return callHost(`fs.canonicalize(${quote(path)})`, () => hostCanonicalize(path));
 }
 
+/** Node-compatible alias for {@link canonicalize}. */
+export const realpath = canonicalize;
+
 /** Read a symlink target without following it. */
 export async function readLink(path: string): Promise<string> {
   return callHost(`fs.readLink(${quote(path)})`, () => hostReadLink(path));
 }
+
+/** Node-compatible alias for {@link readLink}. */
+export const readlink = readLink;
 
 /** Create a hard link. Both endpoints must be in the same VFS scheme. */
 export async function hardLink(src: string, linkPath: string): Promise<void> {
@@ -300,6 +387,9 @@ export async function hardLink(src: string, linkPath: string): Promise<void> {
     hostHardLink(src, linkPath),
   );
 }
+
+/** Node-compatible alias for {@link hardLink}. */
+export const link = hardLink;
 
 /**
  * Read directory entries. Returns string[] by default to match
@@ -316,7 +406,11 @@ export async function readdir(
 ): Promise<string[] | Dirent[]> {
   const names = callHost(`fs.readdir(${quote(path)})`, () => hostReaddir(path));
   if (options?.withFileTypes) {
-    return names.map((n) => new Dirent(path, n));
+    return Promise.all(names.map(async (name) => {
+      const entryPath = path.endsWith("/") ? path + name : `${path}/${name}`;
+      const entry = callHost(`fs.lstat(${quote(entryPath)})`, () => hostStatSymlink(entryPath));
+      return createDirent(path, name, entry.kind);
+    }));
   }
   return names;
 }
@@ -350,6 +444,15 @@ export async function opendir(path: string): Promise<AsyncIterableIterator<Diren
 function datetimeToMs(dt: FileStat["modified"]): number | undefined {
   if (dt === undefined) return undefined;
   return Number(dt.seconds) * 1000 + dt.nanoseconds / 1_000_000;
+}
+
+function hostOpenMode(mode: OpenMode): "read" | "read-write" | "write" | "append" {
+  switch (mode) {
+    case "r": return "read";
+    case "r+": return "read-write";
+    case "w": return "write";
+    case "a": return "append";
+  }
 }
 
 function quote(s: string): string {

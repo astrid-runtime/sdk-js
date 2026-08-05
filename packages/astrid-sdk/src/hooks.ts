@@ -13,33 +13,30 @@ import type { hook as contracts } from "./contracts.js";
 export type HookEventRequest = contracts.HookEventRequest;
 export type HookResult = contracts.HookResult;
 
-export const EVENT_PREFIX = "hook.v1.event.";
-export const RESPONSE_PREFIX = "hook.v1.response.";
-
-export function eventTopic(name: string): string {
-  return `${EVENT_PREFIX}${name}`;
-}
-
-export function responseTopic(name: string, correlationId: string): string {
-  return `${RESPONSE_PREFIX}${name}.${correlationId}`;
-}
+const RESPONSE_PREFIX = "hook.v1.response.";
 
 /** A lifecycle event with its optional reply channel bound. */
 export class HookEvent {
   readonly name: string;
   readonly correlationId: string | undefined;
-  readonly rawPayload: string;
+  readonly payload: string;
 
   constructor(request: HookEventRequest) {
     this.name = request.hook;
     this.correlationId = request.correlation_id;
-    this.rawPayload = request.payload;
+    this.payload = request.payload;
   }
+
+  /** @deprecated Use {@link payload}. */
+  get rawPayload(): string { return this.payload; }
+
+  /** Whether this event has a correlation-scoped response channel. */
+  get canReply(): boolean { return this.correlationId !== undefined; }
 
   /** Parse the hook-specific JSON payload. */
   json<T = unknown>(): T {
     try {
-      return JSON.parse(this.rawPayload) as T;
+      return JSON.parse(this.payload) as T;
     } catch (error) {
       throw SysError.json(`hooks.HookEvent.json: ${(error as Error).message}`, error);
     }
@@ -49,19 +46,20 @@ export class HookEvent {
    * Publish a result on this event's scoped reply topic. Fire-and-forget
    * events have no correlation id, so replying to one is a successful no-op.
    */
-  reply(result: HookResult): void {
-    if (this.correlationId === undefined) return;
-    ipc.publishJson(responseTopic(this.name, this.correlationId), result);
+  reply(result: HookResult): boolean {
+    if (this.correlationId === undefined) return false;
+    ipc.publishJson(`${RESPONSE_PREFIX}${this.name}.${this.correlationId}`, result);
+    return true;
   }
 
   /** Ask the kernel to skip the gated operation. */
-  skip(): void {
-    this.reply({ skip: true });
+  skip(): boolean {
+    return this.reply({ skip: true });
   }
 
   /** Supply opaque JSON data for the hook bridge's merge strategy. */
-  respond(data: string | unknown): void {
-    this.reply({ data: typeof data === "string" ? data : stringifyData(data) });
+  respond(data: unknown): boolean {
+    return this.reply({ data: typeof data === "string" ? data : stringifyData(data) });
   }
 }
 

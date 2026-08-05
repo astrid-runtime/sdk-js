@@ -9,32 +9,24 @@
 import {
   uplinkRegister,
   uplinkSend,
-  type UplinkProfile,
 } from "astrid:uplink/host@1.0.0";
 import { callHost } from "./errors.js";
 
-export type { UplinkProfile } from "astrid:uplink/host@1.0.0";
+export type UplinkProfile = "chat" | "interactive" | "notify" | "bridge";
 
-export class UplinkId {
-  readonly value: string;
-  constructor(value: string) {
-    this.value = value;
-  }
-  toString(): string {
-    return this.value;
-  }
-}
+declare const uplinkIdBrand: unique symbol;
+/** Opaque string ID returned by {@link register}. */
+export type UplinkId = string & { readonly [uplinkIdBrand]: true };
 
 /**
  * Register an uplink. `profile` is one of `"chat"` / `"interactive"` /
- * `"notify"` / `"bridge"`. Returns the assigned uplink UUID wrapped in
- * {@link UplinkId}.
+ * `"notify"` / `"bridge"`. Returns the assigned opaque uplink ID.
  */
 export function register(name: string, platform: string, profile: UplinkProfile): UplinkId {
   const id = callHost(`uplink.register(${JSON.stringify(name)})`, () =>
     uplinkRegister(name, platform, profile),
   );
-  return new UplinkId(id);
+  return id as UplinkId;
 }
 
 /**
@@ -43,7 +35,7 @@ export function register(name: string, platform: string, profile: UplinkProfile)
  * principal).
  */
 export function send(uplink: UplinkId, platformUserId: string, content: string): boolean {
-  return callHost(`uplink.send(${uplink.value})`, () =>
-    uplinkSend(uplink.value, platformUserId, content),
+  return callHost(`uplink.send(${uplink})`, () =>
+    uplinkSend(uplink, platformUserId, content),
   );
 }
