@@ -15,7 +15,7 @@ Capsule code (TypeScript or JavaScript)
     |
   @unicity-astrid/sdk           typed modules: fs, net, ipc, kv, http, ...
     |
-  WIT-imported bindings    "astrid:<domain>/host@1.0.0" + "astrid:io/*@1.0.0" (ComponentizeJS-generated)
+  WIT-imported bindings    versioned "astrid:<domain>/host" + "astrid:io/*@1.0.0" (ComponentizeJS-generated)
     |
   Kernel                   capability checks, VFS, IPC bus, audit
 ```
@@ -28,13 +28,13 @@ The SDK never reaches the network, filesystem, or any external service directly.
 |---|---|---|
 | `fs` | `astrid_sdk::fs` (mirrors `std::fs`) | `node:fs/promises` shape: `readFile`/`writeFile`/`mkdir`/`stat` (returns `Stats` with `isFile()`/`isDirectory()`/`mtimeMs`)/`readdir`/`opendir` (AsyncIterable) |
 | `net` | `astrid_sdk::net` (mirrors `std::sync::mpsc`) | mpsc-shaped errors (`RecvError` / `TryRecvError::{Empty,Closed}` / `SendError`) + `Symbol.asyncIterator` streams |
-| `process` | `astrid_sdk::process` | `child_process.spawn`-shaped: `spawn(cmd, args) → ProcessResult`, `spawnBackground` returns `BackgroundProcessHandle` with `readLogs`/`kill` |
+| `process` | `astrid_sdk::process` | `node:child_process` conventions: `spawnSync(cmd, args, options) → ProcessResult` (`spawn` retained for parity), `spawnBackground` returns a disposable handle; `injectedFiles` is an object-union option rather than a Rust builder |
 | `env` | `astrid_sdk::env` (mirrors `std::env`) | `env.get(key)`, `CONFIG_SOCKET_PATH` constant |
 | `time` | `astrid_sdk::time` | `now() → Date`, `nowMs() → bigint` |
 | `log` | `astrid_sdk::log` (mirrors `log` crate) | `log.{trace,debug,info,warn,error}`. **No** `globalThis.console` shadowing — the engine may already wire it. |
 | `ipc` | `astrid_sdk::ipc` | `publish`/`publishJson`; `subscribe(topic)` returns a `Subscription` with `.poll()`/`.recv(timeoutMs)` (full parity, surfaces `lagged`/`dropped`) AND `Symbol.asyncIterator` for convenience |
-| `kv` | `astrid_sdk::kv` | Map-shape async: `get<T>(key)`/`set<T>`/`has`/`del`/`listKeys`/`clearPrefix`; raw byte variants for non-JSON payloads |
-| `http` | `astrid_sdk::http` (mirrors reqwest) | Builder `Request.get/post/header/json/setBody` + `send` / `streamStart`; plus a WHATWG `fetch` polyfill that routes through the same host imports for capability-gated network access |
+| `kv` | `astrid_sdk::kv` | Map-shaped `get<T>(key)`/`set<T>`/`has`/`del`; versioned reads return a TypeScript discriminated union; raw byte variants remain available |
+| `http` | `astrid_sdk::http` (mirrors reqwest) | WHATWG-style `http.fetch()` plus the existing fluent `Request`/`send`/`streamStart` surface; host-specific deadlines, redirects, size caps, HTTPS-only and integrity controls use camel-cased option objects |
 | `runtime` | `astrid_sdk::runtime` | `signalReady()`, `caller() → CallerContext`, `socketPath()` |
 | `capabilities` | `astrid_sdk::capabilities` | `check(sourceUuid, capability) → boolean` |
 | `elicit` | `astrid_sdk::elicit` | `secret`/`hasSecret`/`text`/`textWithDefault`/`select`/`array` (install/upgrade only) |
@@ -42,6 +42,7 @@ The SDK never reaches the network, filesystem, or any external service directly.
 | `approval` | `astrid_sdk::approval` | `request(action, resource) → boolean` |
 | `uplink` | `astrid_sdk::uplink` | `register(name, platform, profile) → UplinkId`, `send(id, userId, content) → boolean` |
 | `interceptors` | `astrid_sdk::interceptors` | `bindings()` / `poll(bindings, handler)` — usually unneeded; `@interceptor` decorator handles dispatch |
+| `hooks` | `astrid_sdk::hook` | `HookEvent` with properties, `.json()`, `.reply()`, `.skip()`, `.respond()`; `@hook` handles fail-open dispatch and scoped replies |
 
 ## Decorators (replaces `#[capsule]` macro)
 
@@ -50,6 +51,7 @@ The SDK never reaches the network, filesystem, or any external service directly.
 | `#[capsule]` on impl block | `@capsule` on class |
 | `#[astrid::tool("name")]` | `@tool("name", { mutable?, description?, inputSchema? })` |
 | `#[astrid::interceptor("topic")]` | `@interceptor("topic", { mutable? })` |
+| `#[astrid::hook("name")]` | `@hook("name", { mutable? })` |
 | `#[astrid::command("name")]` | `@command("name", { mutable? })` |
 | `#[astrid::install]` | `@install` |
 | `#[astrid::upgrade]` | `@upgrade` |
@@ -89,7 +91,15 @@ export class MyCapsule {
 
 ## Error model: throw, don't `Result`
 
-The Rust SDK returns `Result<T, SysError>`. This SDK **throws** a `SysError extends Error` with a `code` discriminant (`"HostError"` / `"JsonError"` / `"ApiError"`). Fighting JS to add Rust-shaped errors would be the opposite of "feels native". Same semantics, idiom-correct.
+The Rust SDK returns `Result<T, SysError>`. This SDK **throws** a `SysError extends Error`. Its `kind` records the origin (`HostError`, `JsonError`, or `ApiError`) and `code` preserves a typed host error such as `quota` or `capability-denied`. Fighting JS to add Rust-shaped result values would be the opposite of "feels native".
+
+## Versioned KV storage
+
+`kv.setVersioned` writes the same `{"__sv": version, "data": value}` envelope as Rust. `kv.getVersioned` returns a discriminated union (`current`, `needs-migration`, `unversioned`, or `not-found`) for exhaustive narrowing. `kv.getVersionedOrMigrate` writes a successful migration back at the current version and rejects forward-version data.
+
+## Lifecycle hooks
+
+`@hook("before_tool_call")` receives a `HookEvent`. Return `{ skip: true }` or `{ data: "..." }` to publish on the correlation-scoped response topic, or return `undefined` to observe without replying. Fire-and-forget events make manual reply helpers no-ops. Malformed payloads and handler/reply failures are logged and return `continue`, preserving the hook bridge's fail-open contract.
 
 ## Async model
 

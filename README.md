@@ -12,7 +12,7 @@ Companion to [sdk-rust](https://github.com/astrid-runtime/sdk-rust). Same WIT co
 
 | Package | Role |
 |---|---|
-| `@unicity-astrid/sdk` | The capsule author API. Module-by-module mirror of `astrid-sdk`'s `prelude` — `fs`, `net`, `process`, `env`, `time`, `log`, plus Astrid-specific `ipc`, `kv`, `http`, `hooks`, `uplink`, `identity`, `approval`, `runtime`, `elicit`, `capabilities`, `interceptors`. TypeScript decorators (`@capsule`, `@tool`, `@interceptor`, `@command`, `@install`, `@upgrade`, `@run`) replace `#[capsule]`. |
+| `@unicity-astrid/sdk` | The capsule author API. Module-by-module mirror of `astrid-sdk`'s prelude — `fs`, `net`, `process`, `env`, `time`, `log`, plus Astrid-specific `ipc`, `kv`, `http`, `hooks`, `uplink`, `identity`, `approval`, `runtime`, `elicit`, `capabilities`, `interceptors`. TypeScript decorators (`@capsule`, `@tool`, `@interceptor`, `@hook`, `@command`, `@install`, `@upgrade`, `@run`) replace Rust attributes. |
 | `@unicity-astrid/build` | Build orchestrator. Runs `tsc` + esbuild + ComponentizeJS programmatic API. Emits a `wasm32-wasip2` component that the Rust-side `astrid-build` packs into a `.capsule` archive. |
 | `@unicity-astrid/sdk/contracts` | Auto-generated TS types from `astrid-contracts.wit` — IPC event types (`Message`, `ToolCall`, `GenerateRequest`, `StreamEvent`, etc.) usable on both ends of cross-capsule IPC. |
 
@@ -38,8 +38,10 @@ file = "my-capsule.wasm"
 type = "executable"
 
 [capabilities]
-ipc_publish = ["tool.v1.execute.*"]
 kv = ["*"]
+
+[publish]
+"tool.v1.execute.*" = { wit = "opaque" }
 ```
 
 `src/index.ts`:

@@ -9,9 +9,11 @@ export { capsule, install, upgrade, run } from "./capsule.js";
 export {
   tool,
   interceptor,
+  hook,
   command,
   type ToolOptions,
   type InterceptorOptions,
+  type HookOptions,
   type CommandOptions,
 } from "./tool.js";
 
@@ -34,6 +36,7 @@ export * as identity from "./identity.js";
 export * as approval from "./approval.js";
 export * as uplink from "./uplink.js";
 export * as interceptors from "./interceptors.js";
+export * as hooks from "./hooks.js";
 
 // Type re-exports for ergonomic imports.
 export type {
@@ -48,6 +51,8 @@ export type {
   Request as HttpRequest,
   Response as HttpResponse,
   HttpMethod,
+  RedirectPolicy,
+  HttpRequestOptions,
   HttpStreamHandle,
   StreamStart,
   FetchInit,
@@ -73,6 +78,7 @@ export type {
   KillResult,
   BackgroundProcessHandle,
   SpawnOptions,
+  InjectedFile,
   ProcessSignal,
   EnvVar,
   PersistentProcess,
@@ -89,4 +95,5 @@ export type { CallerContext } from "./runtime.js";
 export type { ResolvedUser, Link } from "./identity.js";
 export type { UplinkId, UplinkProfile } from "./uplink.js";
 export type { ApprovalDecision } from "./approval.js";
-export type { KeyPage } from "./kv.js";
+export type { KeyPage, Versioned } from "./kv.js";
+export { HookEvent, type HookEventRequest, type HookResult } from "./hooks.js";

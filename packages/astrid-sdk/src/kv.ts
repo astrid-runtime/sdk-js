@@ -27,6 +27,13 @@ export interface KeyPage {
   nextCursor: string | undefined;
 }
 
+/** Result of reading a schema-versioned JSON value. */
+export type Versioned<T> =
+  | { status: "current"; value: T }
+  | { status: "needs-migration"; value: unknown; storedVersion: number }
+  | { status: "unversioned"; value: unknown }
+  | { status: "not-found" };
+
 export function getBytes(key: string): Uint8Array | undefined {
   return callHost(`kv.getBytes(${quote(key)})`, () => hostGet(key));
 }
@@ -115,6 +122,86 @@ export function cas(
       return false;
     }
     throw err;
+  }
+}
+
+/** Store JSON in the cross-SDK `{"__sv": version, "data": value}` envelope. */
+export function setVersioned<T>(key: string, value: T, version: number): void {
+  assertSchemaVersion("version", version);
+  set(key, { __sv: version, data: value });
+}
+
+/**
+ * Read a schema-versioned value without guessing how to migrate older data.
+ * Newer schemas fail closed instead of being interpreted by older code.
+ */
+export function getVersioned<T>(key: string, currentVersion: number): Versioned<T> {
+  assertSchemaVersion("currentVersion", currentVersion);
+  const bytes = getBytes(key);
+  if (bytes === undefined || bytes.length === 0) return { status: "not-found" };
+
+  let value: unknown;
+  try {
+    value = JSON.parse(decoder.decode(bytes));
+  } catch (error) {
+    throw SysError.json(`kv.getVersioned(${quote(key)}): ${(error as Error).message}`, error);
+  }
+
+  if (!isRecord(value) || !("__sv" in value)) {
+    return { status: "unversioned", value };
+  }
+  if (!("data" in value) || !isSchemaVersion(value.__sv)) {
+    throw SysError.api(
+      "malformed versioned envelope: __sv must be an unsigned 32-bit integer and data must exist",
+    );
+  }
+  if (value.__sv > currentVersion) {
+    throw SysError.api(
+      `stored schema version ${value.__sv} is newer than current version ${currentVersion}; cannot safely read`,
+    );
+  }
+  if (value.__sv < currentVersion) {
+    return { status: "needs-migration", value: value.data, storedVersion: value.__sv };
+  }
+  return { status: "current", value: value.data as T };
+}
+
+/** Read versioned data, migrating and writing back older or legacy values. */
+export function getVersionedOrMigrate<T>(
+  key: string,
+  currentVersion: number,
+  migrate: (value: unknown, storedVersion: number) => T,
+): T | undefined {
+  const found = getVersioned<T>(key, currentVersion);
+  switch (found.status) {
+    case "current":
+      return found.value;
+    case "not-found":
+      return undefined;
+    case "needs-migration": {
+      const migrated = migrate(found.value, found.storedVersion);
+      setVersioned(key, migrated, currentVersion);
+      return migrated;
+    }
+    case "unversioned": {
+      const migrated = migrate(found.value, 0);
+      setVersioned(key, migrated, currentVersion);
+      return migrated;
+    }
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isSchemaVersion(value: unknown): value is number {
+  return Number.isInteger(value) && (value as number) >= 0 && (value as number) <= 0xffff_ffff;
+}
+
+function assertSchemaVersion(name: string, value: number): void {
+  if (!isSchemaVersion(value)) {
+    throw SysError.api(`${name} must be an unsigned 32-bit integer`);
   }
 }
 

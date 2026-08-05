@@ -26,11 +26,13 @@ import {
   type CapsuleRegistration,
   type ToolEntry,
   type InterceptorEntry,
+  type HookEntry,
   type CommandEntry,
 } from "./registry.js";
 import * as kv from "../kv.js";
 import * as ipc from "../ipc.js";
 import * as log from "../log.js";
+import { HookEvent, type HookEventRequest, type HookResult } from "../hooks.js";
 import { getConfig } from "astrid:sys/host@1.0.0";
 
 const STATE_KEY = "__state";
@@ -200,6 +202,50 @@ export function createBridge(): Bridge {
     return cont(resultJson);
   }
 
+  /** Semantic lifecycle hooks are always fail-open. */
+  function executeLifecycleHook(entry: HookEntry, payload: Uint8Array): CapsuleResult {
+    let request: HookEventRequest;
+    try {
+      request = JSON.parse(decoder.decode(payload)) as HookEventRequest;
+      if (
+        typeof request.hook !== "string" ||
+        typeof request.payload !== "string" ||
+        (request.correlation_id !== undefined && typeof request.correlation_id !== "string")
+      ) {
+        throw new Error("expected { hook, payload, correlation_id? }");
+      }
+    } catch (error) {
+      log.warn(`hook '${entry.name}': malformed event: ${(error as Error).message}`);
+      return cont();
+    }
+
+    let instance: object;
+    let persist: boolean;
+    try {
+      ({ instance, persist } = getInstance(entry));
+    } catch (error) {
+      log.warn(`hook '${entry.name}': failed to load state: ${(error as Error).message}`);
+      return cont();
+    }
+
+    const event = new HookEvent(request);
+    try {
+      const result = invoke(instance, entry.methodName, event) as HookResult | undefined;
+      if (result !== undefined) event.reply(result);
+    } catch (error) {
+      log.warn(`hook '${entry.name}': handler or reply failed: ${(error as Error).message}`);
+    }
+
+    if (persist) {
+      try {
+        persistInstance(instance);
+      } catch (error) {
+        log.warn(`hook '${entry.name}': failed to save state: ${(error as Error).message}`);
+      }
+    }
+    return cont();
+  }
+
   return {
     astridHookTrigger(action: string, payload: Uint8Array): CapsuleResult {
       try {
@@ -217,6 +263,10 @@ export function createBridge(): Bridge {
         }
 
         const r = reg();
+        const hook = r.hooks.get(action);
+        if (hook !== undefined) {
+          return executeLifecycleHook(hook, payload);
+        }
         const interceptor = r.interceptors.get(action);
         if (interceptor !== undefined) {
           return executeHookHandler(interceptor, payload);

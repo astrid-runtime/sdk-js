@@ -1,5 +1,6 @@
 /**
- * Host process spawning. Mirrors `astrid_sdk::process`. Capsules need the
+ * Host process spawning over `astrid:process/host@1.1.0`. Mirrors
+ * `astrid_sdk::process`. Capsules need the
  * `host_process` capability for the specific command being invoked; the
  * kernel runs the process under platform sandboxing (sandbox-exec on macOS,
  * bwrap on Linux).
@@ -35,7 +36,8 @@ import {
   type LogStream,
   type LogCursor,
   type OverflowPolicy,
-} from "astrid:process/host@1.0.0";
+  type FileInjection as WitFileInjection,
+} from "astrid:process/host@1.1.0";
 import { SysError, callHost } from "./errors.js";
 
 export type {
@@ -45,7 +47,7 @@ export type {
   LogStream,
   LogCursor,
   OverflowPolicy,
-} from "astrid:process/host@1.0.0";
+} from "astrid:process/host@1.1.0";
 
 export interface ProcessResult {
   stdout: string;
@@ -79,7 +81,17 @@ export interface SpawnOptions {
   env?: Record<string, string>;
   /** Stdin bytes piped to the child on spawn. */
   stdin?: Uint8Array;
+  /** Host-owned, read-only files exposed only inside the spawned child. */
+  injectedFiles?: readonly InjectedFile[];
 }
+
+/**
+ * A host-verified file snapshot for a child process. `env` is portable across
+ * Linux and macOS; `path` is a fixed in-sandbox path and is Linux-only.
+ */
+export type InjectedFile =
+  | { content: string | Uint8Array; env: string; path?: never }
+  | { content: string | Uint8Array; path: string; env?: never };
 
 function buildSpawnRequest(
   cmd: string,
@@ -94,6 +106,7 @@ function buildSpawnRequest(
       ? Object.entries(options.env).map(([key, value]) => ({ key, value }))
       : [],
     cwd: options?.cwd,
+    fileInjections: (options?.injectedFiles ?? []).map(toWitFileInjection),
     // Persistent-only fields — left unset for the ephemeral `spawn` /
     // `spawnBackground` paths (the host ignores them there anyway).
     limits: undefined,
@@ -105,6 +118,19 @@ function buildSpawnRequest(
     idleTimeoutMs: undefined,
     exitRetentionMs: undefined,
   };
+}
+
+function toWitFileInjection(file: InjectedFile): WitFileInjection {
+  const content = typeof file.content === "string"
+    ? new TextEncoder().encode(file.content)
+    : file.content;
+  if ("env" in file && typeof file.env === "string" && file.env.length > 0) {
+    return { content, placement: { tag: "env-pointer", val: file.env } };
+  }
+  if ("path" in file && typeof file.path === "string" && file.path.length > 0) {
+    return { content, placement: { tag: "fixed-path", val: file.path } };
+  }
+  throw SysError.api("each injected file must specify one non-empty env or path");
 }
 
 function unpackExit(exit: ExitInfo): { exitCode: number | undefined; signal: number | undefined } {
@@ -127,6 +153,9 @@ export function spawn(
     ...unpackExit(result.exit),
   };
 }
+
+/** Node-compatible name for the blocking spawn helper. */
+export const spawnSync = spawn;
 
 /** Spawn a background process. Returns a resource handle. */
 export function spawnBackground(

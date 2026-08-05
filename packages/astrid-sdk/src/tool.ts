@@ -1,6 +1,6 @@
 /**
- * `@tool`, `@interceptor`, `@command` method decorators — mirror
- * `#[astrid::tool]`, `#[astrid::interceptor]`, `#[astrid::command]` from the
+ * `@tool`, `@interceptor`, `@hook`, `@command` method decorators — mirror
+ * `#[astrid::tool]`, `#[astrid::interceptor]`, `#[astrid::hook]`, `#[astrid::command]` from the
  * Rust SDK.
  *
  * Unlike Rust, JS has no `&mut self` signal at decoration time, so
@@ -12,8 +12,10 @@ import {
   type CapsuleConstructor,
   recordTool,
   recordInterceptor,
+  recordHook,
   recordCommand,
 } from "./runtime/registry.js";
+import type { HookEvent, HookResult } from "./hooks.js";
 
 export interface ToolOptions {
   /** If true, the bridge auto-loads + auto-persists capsule state via KV `__state`. */
@@ -26,6 +28,11 @@ export interface ToolOptions {
 
 export interface InterceptorOptions {
   /** Mirror @tool: opt-in state load/save for handlers that mutate `this`. */
+  mutable?: boolean;
+}
+
+export interface HookOptions {
+  /** Opt in to loading and persisting capsule state around the handler. */
   mutable?: boolean;
 }
 
@@ -84,6 +91,40 @@ export function interceptor(topic: string, options: InterceptorOptions = {}) {
       const ctor = (this as object).constructor as CapsuleConstructor;
       recordInterceptor(ctor, {
         topic,
+        methodName: String(context.name),
+        mutable: options.mutable === true,
+      });
+    });
+  };
+}
+
+/**
+ * Declares a semantic lifecycle-hook handler.
+ *
+ * The handler receives a typed {@link HookEvent}. Returning a HookResult
+ * publishes it automatically; returning `undefined` observes without
+ * replying. Malformed events and handler failures are logged and fail open.
+ */
+export function hook(name: string, options: HookOptions = {}) {
+  requireName("hook", name);
+
+  return function <This extends object>(
+    _value: (
+      this: This,
+      event: HookEvent,
+    ) => HookResult | undefined | Promise<HookResult | undefined>,
+    context: ClassMethodDecoratorContext<
+      This,
+      (this: This, event: HookEvent) => HookResult | undefined | Promise<HookResult | undefined>
+    >,
+  ): void {
+    if (context.private || context.static) {
+      throw new Error(`@hook("${name}") must be applied to a public instance method.`);
+    }
+    context.addInitializer(function () {
+      const ctor = (this as object).constructor as CapsuleConstructor;
+      recordHook(ctor, {
+        name,
         methodName: String(context.name),
         mutable: options.mutable === true,
       });
