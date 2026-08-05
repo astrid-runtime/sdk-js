@@ -30,6 +30,13 @@ export interface InterceptorEntry {
   mutable: boolean;
 }
 
+export interface HookEntry {
+  /** Semantic hook name, such as `before_tool_call`. */
+  name: string;
+  methodName: string;
+  mutable: boolean;
+}
+
 export interface CommandEntry {
   /** Command name (= hook action name, registered alongside interceptors). */
   name: string;
@@ -41,6 +48,7 @@ export interface CapsuleRegistration {
   ctor: CapsuleConstructor;
   tools: Map<string, ToolEntry>;
   interceptors: Map<string, InterceptorEntry>;
+  hooks: Map<string, HookEntry>;
   commands: Map<string, CommandEntry>;
   installMethod: string | undefined;
   upgradeMethod: string | undefined;
@@ -55,6 +63,7 @@ function newRegistration(ctor: CapsuleConstructor, description: string | undefin
     ctor,
     tools: new Map(),
     interceptors: new Map(),
+    hooks: new Map(),
     commands: new Map(),
     installMethod: undefined,
     upgradeMethod: undefined,
@@ -103,6 +112,7 @@ export function adoptPending(ctor: CapsuleConstructor): void {
   if (pending === undefined) return;
   for (const [name, entry] of pending.tools) registration.tools.set(name, entry);
   for (const [topic, entry] of pending.interceptors) registration.interceptors.set(topic, entry);
+  for (const [name, entry] of pending.hooks) registration.hooks.set(name, entry);
   for (const [name, entry] of pending.commands) registration.commands.set(name, entry);
   if (pending.installMethod !== undefined && registration.installMethod === undefined) {
     registration.installMethod = pending.installMethod;
@@ -133,6 +143,14 @@ export function recordInterceptor(ctor: CapsuleConstructor, entry: InterceptorEn
     throw new Error(`@interceptor("${entry.topic}") declared twice on ${ctor.name}.`);
   }
   target.interceptors.set(entry.topic, entry);
+}
+
+export function recordHook(ctor: CapsuleConstructor, entry: HookEntry): void {
+  const target = ensureRegistration(ctor);
+  if (target.hooks.has(entry.name)) {
+    throw new Error(`@hook("${entry.name}") declared twice on ${ctor.name}.`);
+  }
+  target.hooks.set(entry.name, entry);
 }
 
 export function recordCommand(ctor: CapsuleConstructor, entry: CommandEntry): void {

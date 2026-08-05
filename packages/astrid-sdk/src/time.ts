@@ -42,6 +42,11 @@ export function sleepMs(ms: number): void {
   callHost(`time.sleepMs(${ms})`, () => hostSleepNs(ns));
 }
 
+/** Promise-shaped sleep for ordinary JavaScript control flow. */
+export async function sleep(ms: number): Promise<void> {
+  sleepMs(ms);
+}
+
 /** Block for `ns` nanoseconds. See {@link sleepMs} for the practical wrapper. */
 export function sleepNs(ns: bigint): void {
   callHost(`time.sleepNs(${ns})`, () => hostSleepNs(ns));

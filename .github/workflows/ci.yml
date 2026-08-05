@@ -54,8 +54,6 @@ jobs:
         run: npm run build
 
       - name: Run tests
-        # No-op for packages without a test script today; reserved for
-        # when astrid-sdk grows a unit-test surface.
         run: npm test
 
   wit-sync:

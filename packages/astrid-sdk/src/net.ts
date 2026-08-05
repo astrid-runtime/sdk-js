@@ -17,9 +17,6 @@ import {
   connectTcp as hostConnectTcp,
   udpBind as hostUdpBind,
   lookupHost as hostLookupHost,
-  type NetReadStatus,
-  type ShutdownHow,
-  type UdpDatagram,
   type UnixListener as WitUnixListener,
   type TcpListener as WitTcpListener,
   type TcpStream as WitTcpStream,
@@ -28,7 +25,22 @@ import {
 import { SysError, callHost } from "./errors.js";
 import { sleepMs as hostSleepMs } from "./time.js";
 
-export type { ShutdownHow, NetReadStatus, UdpDatagram } from "astrid:net/host@1.0.0";
+const NET_INTERNAL = Symbol("Astrid network resource");
+let createUnixListener: (inner: WitUnixListener) => UnixListener;
+let createTcpListener: (inner: WitTcpListener) => TcpListener;
+let createTcpStream: (inner: WitTcpStream) => TcpStream;
+let createUdpSocket: (inner: WitUdpSocket) => UdpSocket;
+
+export type ShutdownHow = "receive" | "send" | "both";
+export type NetReadStatus =
+  | { tag: "data"; val: Uint8Array }
+  | { tag: "closed" }
+  | { tag: "pending" };
+export interface UdpDatagram {
+  data: Uint8Array;
+  peerHost: string;
+  peerPort: number;
+}
 
 // ---------------------------------------------------------------------------
 // mpsc-shaped errors (preserved from pre-migration API)
@@ -76,16 +88,19 @@ function toHostTimeout(timeoutMs: number | undefined): bigint | undefined {
 export class UnixListener {
   #inner: WitUnixListener | undefined;
 
-  constructor(inner: WitUnixListener) {
-    this.#inner = inner;
+  private constructor(token: typeof NET_INTERNAL, value: unknown) {
+    if (token !== NET_INTERNAL) throw new TypeError("UnixListener cannot be constructed directly");
+    this.#inner = value as WitUnixListener;
   }
+
+  static { createUnixListener = (inner) => new UnixListener(NET_INTERNAL, inner); }
 
   /** Blocking accept. Performs peer-credential verification + session token handshake. */
   accept(): TcpStream {
     const inner = callHost("net.UnixListener.accept", () =>
       this.#requireInner().accept(),
     );
-    return new TcpStream(inner);
+    return createTcpStream(inner);
   }
 
   /** Polling accept with caller-controlled timeout. Returns `undefined` if none arrived. */
@@ -94,7 +109,7 @@ export class UnixListener {
     const inner = callHost(`net.UnixListener.pollAccept(${timeoutMs}ms)`, () =>
       this.#requireInner().pollAccept(ms),
     );
-    return inner === undefined ? undefined : new TcpStream(inner);
+    return inner === undefined ? undefined : createTcpStream(inner);
   }
 
   close(): void {
@@ -122,14 +137,17 @@ export class UnixListener {
 export class TcpListener {
   #inner: WitTcpListener | undefined;
 
-  constructor(inner: WitTcpListener) {
-    this.#inner = inner;
+  private constructor(token: typeof NET_INTERNAL, value: unknown) {
+    if (token !== NET_INTERNAL) throw new TypeError("TcpListener cannot be constructed directly");
+    this.#inner = value as WitTcpListener;
   }
+
+  static { createTcpListener = (inner) => new TcpListener(NET_INTERNAL, inner); }
 
   /** Blocking accept. */
   accept(): TcpStream {
     const inner = callHost("net.TcpListener.accept", () => this.#requireInner().accept());
-    return new TcpStream(inner);
+    return createTcpStream(inner);
   }
 
   /** Polling accept with caller-controlled timeout. */
@@ -138,7 +156,7 @@ export class TcpListener {
     const inner = callHost(`net.TcpListener.pollAccept(${timeoutMs}ms)`, () =>
       this.#requireInner().pollAccept(ms),
     );
-    return inner === undefined ? undefined : new TcpStream(inner);
+    return inner === undefined ? undefined : createTcpStream(inner);
   }
 
   localAddr(): string {
@@ -173,9 +191,12 @@ export class TcpListener {
 export class TcpStream {
   #inner: WitTcpStream | undefined;
 
-  constructor(inner: WitTcpStream) {
-    this.#inner = inner;
+  private constructor(token: typeof NET_INTERNAL, value: unknown) {
+    if (token !== NET_INTERNAL) throw new TypeError("TcpStream cannot be constructed directly");
+    this.#inner = value as WitTcpStream;
   }
+
+  static { createTcpStream = (inner) => new TcpStream(NET_INTERNAL, inner); }
 
   // ---- Length-prefixed framed I/O (uplink-proxy use case) -----------------
 
@@ -395,9 +416,12 @@ export class TcpStream {
 export class UdpSocket {
   #inner: WitUdpSocket | undefined;
 
-  constructor(inner: WitUdpSocket) {
-    this.#inner = inner;
+  private constructor(token: typeof NET_INTERNAL, value: unknown) {
+    if (token !== NET_INTERNAL) throw new TypeError("UdpSocket cannot be constructed directly");
+    this.#inner = value as WitUdpSocket;
   }
+
+  static { createUdpSocket = (inner) => new UdpSocket(NET_INTERNAL, inner); }
 
   sendTo(data: Uint8Array, peerHost: string, peerPort: number): number {
     return callHost(`net.UdpSocket.sendTo(${peerHost}:${peerPort})`, () =>
@@ -482,7 +506,7 @@ export { TcpStream as StreamHandle, UnixListener as ListenerHandle };
 /** Bind the kernel-pre-provisioned Unix socket and return a listener. */
 export function bindUnix(): UnixListener {
   const inner = callHost("net.bindUnix", () => hostBindUnix());
-  return new UnixListener(inner);
+  return createUnixListener(inner);
 }
 
 /**
@@ -491,7 +515,7 @@ export function bindUnix(): UnixListener {
  */
 export function bindTcp(host: string, port: number): TcpListener {
   const inner = callHost(`net.bindTcp(${host}:${port})`, () => hostBindTcp(host, port));
-  return new TcpListener(inner);
+  return createTcpListener(inner);
 }
 
 /** Block until the next incoming connection on the Unix listener. */
@@ -510,7 +534,7 @@ export function tryAccept(listener: UnixListener): TcpStream | undefined {
  */
 export function connect(host: string, port: number): TcpStream {
   const inner = callHost(`net.connect(${host}:${port})`, () => hostConnectTcp(host, port));
-  return new TcpStream(inner);
+  return createTcpStream(inner);
 }
 
 /** Alias for {@link connect} matching the WIT name. */
@@ -519,7 +543,7 @@ export const connectTcp = connect;
 /** Bind a UDP socket. */
 export function udpBind(host: string, port: number): UdpSocket {
   const inner = callHost(`net.udpBind(${host}:${port})`, () => hostUdpBind(host, port));
-  return new UdpSocket(inner);
+  return createUdpSocket(inner);
 }
 
 /**

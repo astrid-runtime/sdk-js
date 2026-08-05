@@ -27,10 +27,13 @@
   "scripts": {
     "prebuild": "node scripts/generate-contracts.mjs",
     "build": "tsc -b",
+    "pretest": "npm run build",
+    "test": "node --test test/*.test.mjs",
     "clean": "rm -rf dist src/contracts.ts"
   },
   "devDependencies": {
-    "@unicity-astrid/build": "*"
+    "@unicity-astrid/build": "*",
+    "esbuild": "^0.24.0"
   },
   "engines": {
     "node": ">=20"

@@ -40,12 +40,10 @@ export function install<This extends object>(
   _value: (this: This) => unknown,
   context: ClassMethodDecoratorContext<This, (this: This) => unknown>,
 ): void {
-  if (context.private || context.static) {
-    throw new Error("@install must be applied to a public instance method.");
-  }
+  const methodName = publicMethodName("install", context);
   context.addInitializer(function () {
     const ctor = (this as object).constructor as CapsuleConstructor;
-    recordInstall(ctor, String(context.name));
+    recordInstall(ctor, methodName);
   });
 }
 
@@ -57,12 +55,10 @@ export function upgrade<This extends object>(
   _value: (this: This, prevVersion: string) => unknown,
   context: ClassMethodDecoratorContext<This, (this: This, prevVersion: string) => unknown>,
 ): void {
-  if (context.private || context.static) {
-    throw new Error("@upgrade must be applied to a public instance method.");
-  }
+  const methodName = publicMethodName("upgrade", context);
   context.addInitializer(function () {
     const ctor = (this as object).constructor as CapsuleConstructor;
-    recordUpgrade(ctor, String(context.name));
+    recordUpgrade(ctor, methodName);
   });
 }
 
@@ -80,11 +76,19 @@ export function run<This extends object>(
   _value: (this: This) => unknown,
   context: ClassMethodDecoratorContext<This, (this: This) => unknown>,
 ): void {
-  if (context.private || context.static) {
-    throw new Error("@run must be applied to a public instance method.");
-  }
+  const methodName = publicMethodName("run", context);
   context.addInitializer(function () {
     const ctor = (this as object).constructor as CapsuleConstructor;
-    recordRun(ctor, String(context.name));
+    recordRun(ctor, methodName);
   });
+}
+
+function publicMethodName(
+  kind: string,
+  context: { name: string | symbol; private: boolean; static: boolean },
+): string {
+  if (context.private || context.static || typeof context.name !== "string") {
+    throw new Error(`@${kind} must be applied to a string-named public instance method.`);
+  }
+  return context.name;
 }

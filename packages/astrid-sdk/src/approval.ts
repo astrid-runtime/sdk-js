@@ -11,11 +11,15 @@
 
 import {
   requestApproval as hostRequestApproval,
-  type ApprovalDecision,
 } from "astrid:approval/host@1.0.0";
 import { callHost } from "./errors.js";
 
-export type { ApprovalDecision } from "astrid:approval/host@1.0.0";
+export type ApprovalDecision =
+  | "denied"
+  | "approved"
+  | "approved-session"
+  | "approved-always"
+  | "allowance";
 
 /**
  * Request approval for a sensitive action. Returns `true` if approved (any

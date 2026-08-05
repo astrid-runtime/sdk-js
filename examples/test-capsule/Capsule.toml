@@ -11,9 +11,13 @@ file = "test-capsule.wasm"
 type = "executable"
 
 [capabilities]
-ipc_publish = ["tool.v1.execute.*", "test.v1.event.*"]
 kv = ["*"]
 
-[[interceptor]]
-event = "test.v1.event"
-action = "test.v1.event"
+[publish]
+"tool.v1.execute.*" = { wit = "opaque" }
+"test.v1.event.*" = { wit = "opaque" }
+"hook.v1.response.before_tool_call.*" = { wit = "@unicity-astrid/wit/hook/hook-result" }
+
+[subscribe]
+"test.v1.event" = { wit = "opaque", handler = "test.v1.event" }
+"hook.v1.event.before_tool_call" = { wit = "@unicity-astrid/wit/hook/hook-event-request", handler = "before_tool_call" }

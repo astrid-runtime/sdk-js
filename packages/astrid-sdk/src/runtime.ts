@@ -60,8 +60,8 @@ export function randomBytes(length: number): Uint8Array {
  */
 export function socketPath(): string {
   const path = getEnv(CONFIG_SOCKET_PATH);
-  if (path === "") {
-    throw SysError.api("ASTRID_SOCKET_PATH config key is empty");
+  if (path === undefined || path === "") {
+    throw SysError.api("ASTRID_SOCKET_PATH config key is missing or empty");
   }
   if (path.indexOf("\0") >= 0) {
     throw SysError.api("ASTRID_SOCKET_PATH contains null byte");

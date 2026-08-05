@@ -529,6 +529,230 @@ export namespace session {
     session_id: string;
   }
 
+  /**
+   * Request to list the caller's sessions (paginated). The handler
+   * enumerates only the invoking principal's sessions — the kernel scopes
+   * the capsule's key-value namespace per principal, so there is no
+   * cross-principal enumeration. Topic: `session.v1.request.list`.
+   */
+  export interface ListRequest {
+    correlation_id: string;
+    /**
+     * Opaque pagination cursor from a previous `list-response`, or absent
+     * for the first page.
+     */
+    cursor?: string;
+    /**
+     * Maximum sessions to return in this page. The host caps the
+     * effective value; absent means the server default.
+     */
+    limit?: number;
+    /** Include archived threads. Default (false) returns only active ones. */
+    include_archived: boolean;
+  }
+
+  /**
+   * Metadata describing one session — no transcript body. Display name
+   * fallback chain: `title` → `preview` → session-id.
+   */
+  export interface SessionSummary {
+    /** Session identifier (e.g. `default` or a UUID for chained sessions). */
+    session_id: string;
+    /** User/operator-set thread title. Absent until set via `update`. */
+    title?: string;
+    /**
+     * Preview of the FIRST user message, truncated — a stable auto-name
+     * when no `title` is set.
+     */
+    preview?: string;
+    /**
+     * Preview of the MOST RECENT message, truncated — the recent-activity
+     * snippet a thread-list row shows.
+     */
+    last_message_preview?: string;
+    /** Number of messages currently in the session. */
+    message_count: number;
+    /**
+     * Unix epoch seconds the session was first written, if known. Absent
+     * for legacy sessions predating timestamp tracking.
+     */
+    created_at?: bigint;
+    /**
+     * Unix epoch seconds of the most recent write, if known. Absent for
+     * legacy sessions until their next write.
+     */
+    updated_at?: bigint;
+    /**
+     * True if archived (hidden from the default list, data retained).
+     * Toggle via `update`.
+     */
+    archived: boolean;
+    /**
+     * Parent session id if this session descends from a cleared or
+     * compacted ancestor.
+     */
+    parent_session_id?: string;
+    /**
+     * Opaque client-defined JSON (tags, pin, per-device read-state, …),
+     * stored verbatim and never interpreted by the capsule, size-bounded.
+     * The forward-compat escape hatch for per-thread attributes.
+     */
+    meta?: string;
+  }
+
+  /**
+   * Response with a page of session summaries, scoped by correlation ID.
+   * Topic: `session.v1.response.list.<correlation-id>`.
+   */
+  export interface ListResponse {
+    correlation_id: string;
+    /**
+     * The page of sessions, ordered by session key. Each carries
+     * `updated-at` for client-side recency sorting within the page.
+     */
+    sessions: SessionSummary[];
+    /** Opaque cursor for the next page, or absent on the last page. */
+    next_cursor?: string;
+    /**
+     * Total thread count for the principal when cheaply known (absent if
+     * the set is too large to count in one pass).
+     */
+    total?: number;
+  }
+
+  /**
+   * Request for one thread's metadata (no transcript).
+   * Topic: `session.v1.request.get_meta`.
+   */
+  export interface GetMetaRequest {
+    correlation_id: string;
+    session_id: string;
+  }
+
+  /**
+   * Response with one thread's metadata, or absent if no such thread in the
+   * caller's namespace. Topic: `session.v1.response.get_meta.<correlation-id>`.
+   */
+  export interface GetMetaResponse {
+    correlation_id: string;
+    session?: SessionSummary;
+  }
+
+  /**
+   * Patch a thread's mutable metadata: a present field is applied, an absent
+   * field left unchanged; `title`/`meta` set to an empty string clear that
+   * attribute. `rename` and `archive` are both expressed through this verb.
+   * Topic: `session.v1.request.update`.
+   */
+  export interface UpdateRequest {
+    correlation_id: string;
+    session_id: string;
+    /** New title; empty string clears it; absent leaves it unchanged. */
+    title?: string;
+    /** New archived state; absent leaves it unchanged. */
+    archived?: boolean;
+    /** New opaque client `meta`; empty string clears; absent unchanged. */
+    meta?: string;
+  }
+
+  /**
+   * Response with the updated metadata, or absent if no such thread.
+   * Topic: `session.v1.response.update.<correlation-id>`.
+   */
+  export interface UpdateResponse {
+    correlation_id: string;
+    session?: SessionSummary;
+  }
+
+  /**
+   * Hard-delete a thread: transcript and metadata are purged from the store
+   * (irreversible), scoped to the caller's namespace. To hide a thread
+   * reversibly, `update` its `archived` flag instead.
+   * Topic: `session.v1.request.delete`.
+   */
+  export interface DeleteRequest {
+    correlation_id: string;
+    session_id: string;
+  }
+
+  /**
+   * Response confirming deletion. `deleted` is false if no such thread
+   * existed. Topic: `session.v1.response.delete.<correlation-id>`.
+   */
+  export interface DeleteResponse {
+    correlation_id: string;
+    deleted: boolean;
+  }
+
+  /**
+   * Keyword/substring search across the caller's transcripts
+   * (case-insensitive). v1 is literal matching — relevance ranking is a
+   * separate concern. Topic: `session.v1.request.search`.
+   */
+  export interface SearchRequest {
+    correlation_id: string;
+    query: string;
+    /** Max hits to return; the host caps the effective value. */
+    limit?: number;
+    /**
+     * Opaque cursor from a previous `search-response`, or absent for the
+     * first page.
+     */
+    cursor?: string;
+    /** Search archived threads too. Default (false) skips them. */
+    include_archived: boolean;
+  }
+
+  /** One search hit: the thread plus the matching excerpt. */
+  export interface SearchResult {
+    session_id: string;
+    /** Thread title if set, for display. */
+    title?: string;
+    /** Truncated excerpt around the first match in the thread. */
+    snippet?: string;
+    /** Number of matching messages in the thread. */
+    match_count: number;
+    /** Recency, for client-side sort of the hit list. */
+    updated_at?: bigint;
+  }
+
+  /**
+   * Response with the search hits, scoped by correlation ID.
+   * Topic: `session.v1.response.search.<correlation-id>`.
+   */
+  export interface SearchResponse {
+    correlation_id: string;
+    results: SearchResult[];
+    /** Opaque cursor for the next page of hits, or absent on the last. */
+    next_cursor?: string;
+  }
+
+  /**
+   * The kind of lifecycle change a `session-event` reports. A `variant`
+   * (not a string) so new kinds extend the type cleanly.
+   */
+  export type SessionEventKind =
+    | { tag: "created" }
+    | { tag: "updated" }
+    | { tag: "deleted" };
+
+  /**
+   * Fan-out notification that a thread's lifecycle changed, published by the
+   * session capsule after a successful mutation and stamped with the acting
+   * principal so a per-principal subscriber (e.g. the gateway's multi-device
+   * live feed) sees only its own. Topic: `session.v1.event.<kind>`
+   * (`created` / `updated` / `deleted`).
+   */
+  export interface SessionEvent {
+    kind: SessionEventKind;
+    session_id: string;
+    /**
+     * Post-change metadata, so a subscriber updates its thread list
+     * without a re-fetch. Absent for `deleted`.
+     */
+    summary?: SessionSummary;
+  }
+
 }
 
 /** Types generated from the `spark` WIT interface. */

@@ -27,7 +27,6 @@ import {
   type IpcEnvelope,
   type IpcMessage as WitIpcMessage,
   type InterceptorBinding as WitInterceptorBinding,
-  type PrincipalAttribution,
   type Subscription as WitSubscription,
 } from "astrid:ipc/host@1.0.0";
 import { randomBytes as hostRandomBytes } from "astrid:sys/host@1.0.0";
@@ -53,7 +52,10 @@ export interface IpcMessage {
   json<T = unknown>(): T;
 }
 
-export type { PrincipalAttribution } from "astrid:ipc/host@1.0.0";
+export type PrincipalAttribution =
+  | { tag: "verified"; val: string }
+  | { tag: "claimed"; val: string }
+  | { tag: "system" };
 
 export interface PollResult {
   messages: IpcMessage[];
@@ -73,6 +75,8 @@ export interface InterceptorBinding {
 }
 
 const DEFAULT_RECV_TIMEOUT_MS = 5_000n;
+const IPC_INTERNAL = Symbol("Astrid IPC resource");
+let createSubscription: (inner: WitSubscription, topic: string) => Subscription;
 
 export function publish(topic: string, payload: string): void {
   callHost(`ipc.publish(${quote(topic)})`, () => hostPublish(topic, payload));
@@ -120,7 +124,7 @@ export function subscribe(topicPattern: string): Subscription {
   const inner = callHost(`ipc.subscribe(${quote(topicPattern)})`, () =>
     hostSubscribe(topicPattern),
   );
-  return new Subscription(inner, topicPattern);
+  return createSubscription(inner, topicPattern);
 }
 
 /**
@@ -139,9 +143,14 @@ export class Subscription {
   readonly topic: string;
   #inner: WitSubscription | undefined;
 
-  constructor(inner: WitSubscription, topic: string) {
-    this.#inner = inner;
+  private constructor(token: typeof IPC_INTERNAL, value: unknown, topic: string) {
+    if (token !== IPC_INTERNAL) throw new TypeError("Subscription cannot be constructed directly");
+    this.#inner = value as WitSubscription;
     this.topic = topic;
+  }
+
+  static {
+    createSubscription = (inner, topic) => new Subscription(IPC_INTERNAL, inner, topic);
   }
 
   /** Non-blocking poll. Returns whatever's already queued. */

@@ -14,9 +14,10 @@
 // same shape — `errors.ts` catches and rewraps into `SysError` so capsules see
 // a unified error class with a typed `code`.
 //
-// One ambient module per WIT interface. Version is always `@1.0.0` after the
-// per-domain split. Omitting the version causes a Wizer-time "module not
-// found" error (see Phase 0 findings).
+// One ambient module per WIT interface and frozen version. Most domains are
+// `@1.0.0`; additive HTTP and process surfaces use `@1.1.0` while the older
+// declarations remain available for source compatibility. Omitting a version
+// causes a Wizer-time "module not found" error (see Phase 0 findings).
 
 // ────────────────────────────────────────────────────────────────────
 // astrid:io/error — downcastable error resource
@@ -422,6 +423,112 @@ declare module "astrid:http/host@1.0.0" {
   export function httpStreamStart(request: HttpRequestData): HttpStream;
 }
 
+declare module "astrid:http/host@1.1.0" {
+  import type { Pollable } from "astrid:io/poll@1.0.0";
+  import type { InputStream, OutputStream } from "astrid:io/streams@1.0.0";
+
+  export type ErrorCode =
+    | { tag: "capability-denied" }
+    | { tag: "invalid-request" }
+    | { tag: "dns-error" }
+    | { tag: "airlock-rejected" }
+    | { tag: "tls-error" }
+    | { tag: "timeout" }
+    | { tag: "connection-error" }
+    | { tag: "body-too-large" }
+    | { tag: "closed" }
+    | { tag: "quota" }
+    | { tag: "redirect-blocked" }
+    | { tag: "too-many-redirects" }
+    | { tag: "integrity-mismatch" }
+    | { tag: "scheme-denied" }
+    | { tag: "decompression-bomb" }
+    | { tag: "protocol"; val: string }
+    | { tag: "unknown"; val: string };
+
+  export type HttpMethod = import("astrid:http/host@1.0.0").HttpMethod;
+  export type RedirectPolicy = "follow" | "error" | "manual";
+
+  export interface KeyValuePair {
+    key: string;
+    value: string;
+  }
+
+  export interface HttpRequestData {
+    url: string;
+    method: HttpMethod;
+    headers: KeyValuePair[];
+    body: Uint8Array | undefined;
+  }
+
+  export interface TimeoutConfig {
+    connectMs: bigint | undefined;
+    firstByteMs: bigint | undefined;
+    betweenBytesMs: bigint | undefined;
+    totalMs: bigint | undefined;
+  }
+
+  export interface RequestOptions {
+    timeouts: TimeoutConfig | undefined;
+    redirect: RedirectPolicy | undefined;
+    maxRedirects: number | undefined;
+    maxResponseBytes: bigint | undefined;
+    maxDecompressedBytes: bigint | undefined;
+    autoDecompress: boolean | undefined;
+    httpsOnly: boolean | undefined;
+    integrity: string | undefined;
+  }
+
+  export interface ResponseMeta {
+    finalUrl: string;
+    redirectCount: number;
+    elapsedMs: bigint;
+    wireBytes: bigint;
+  }
+
+  export interface HttpResponseData {
+    status: number;
+    headers: KeyValuePair[];
+    body: Uint8Array;
+    meta: ResponseMeta;
+  }
+
+  export class HttpStream {
+    private constructor();
+    status(): number;
+    headers(): KeyValuePair[];
+    readChunk(): Uint8Array;
+    close(): void;
+    subscribeReadable(): Pollable;
+    bodyStream(): InputStream;
+    trailers(): KeyValuePair[] | undefined;
+    [Symbol.dispose](): void;
+  }
+
+  export class HttpUpload {
+    private constructor();
+    bodySink(): OutputStream;
+    subscribeWritable(): Pollable;
+    finish(): HttpStream;
+    [Symbol.dispose](): void;
+  }
+
+  export function httpRequest(request: HttpRequestData): HttpResponseData;
+  export function httpRequestOpts(
+    request: HttpRequestData,
+    options: RequestOptions,
+  ): HttpResponseData;
+  export function httpStreamStart(request: HttpRequestData): HttpStream;
+  export function httpStreamStartOpts(
+    request: HttpRequestData,
+    options: RequestOptions,
+  ): HttpStream;
+  export function httpUploadStart(
+    request: HttpRequestData,
+    options: RequestOptions,
+  ): HttpUpload;
+}
+
 // ────────────────────────────────────────────────────────────────────
 // astrid:sys/host
 // ────────────────────────────────────────────────────────────────────
@@ -601,6 +708,89 @@ declare module "astrid:process/host@1.0.0" {
   // Persistent tier — free functions. Every id-keyed call re-checks the
   // caller's (principal, capsule) against the recorded creator host-side;
   // unknown / wrong-owner / reaped all surface as `no-such-process`.
+  export function spawnPersistent(request: SpawnRequest): string;
+  export function attach(id: string): ProcessHandle;
+  export function listProcesses(labelFilter: string | undefined): ProcessInfo[];
+  export function status(id: string): ProcessInfo;
+  export function statusMany(ids: string[]): ProcessInfo[];
+  export function readLogs(id: string): ReadLogsResult;
+  export function readSince(
+    id: string,
+    whichStream: LogStream,
+    cursor: LogCursor,
+    maxBytes: number,
+  ): LogChunk;
+  export function writeStdin(id: string, data: Uint8Array): number;
+  export function closeStdin(id: string): void;
+  export function signal(id: string, sig: ProcessSignal): void;
+  export function wait(id: string, timeoutMs: bigint): ExitInfo;
+  export function stop(id: string, graceMs: bigint | undefined): ExitInfo;
+  export function releaseProcess(id: string): void;
+  export function watch(id: string, suffix: string | undefined): void;
+  export function unwatch(id: string): void;
+}
+
+declare module "astrid:process/host@1.1.0" {
+  import type { Pollable } from "astrid:io/poll@1.0.0";
+
+  export type ErrorCode = import("astrid:process/host@1.0.0").ErrorCode;
+  export type ProcessSignal = import("astrid:process/host@1.0.0").ProcessSignal;
+  export type OverflowPolicy = import("astrid:process/host@1.0.0").OverflowPolicy;
+  export type ProcessPhase = import("astrid:process/host@1.0.0").ProcessPhase;
+  export type LogStream = import("astrid:process/host@1.0.0").LogStream;
+  export type EnvVar = import("astrid:process/host@1.0.0").EnvVar;
+  export type ResourceLimits = import("astrid:process/host@1.0.0").ResourceLimits;
+  export type ExitInfo = import("astrid:process/host@1.0.0").ExitInfo;
+  export type ProcessResult = import("astrid:process/host@1.0.0").ProcessResult;
+  export type ReadLogsResult = import("astrid:process/host@1.0.0").ReadLogsResult;
+  export type KillResult = import("astrid:process/host@1.0.0").KillResult;
+  export type LogCursor = import("astrid:process/host@1.0.0").LogCursor;
+  export type LogChunk = import("astrid:process/host@1.0.0").LogChunk;
+  export type ProcessInfo = import("astrid:process/host@1.0.0").ProcessInfo;
+
+  export type InjectionPlacement =
+    | { tag: "env-pointer"; val: string }
+    | { tag: "fixed-path"; val: string };
+
+  export interface FileInjection {
+    content: Uint8Array;
+    placement: InjectionPlacement;
+  }
+
+  export interface SpawnRequest {
+    cmd: string;
+    args: string[];
+    stdin: Uint8Array | undefined;
+    env: EnvVar[];
+    cwd: string | undefined;
+    limits: ResourceLimits | undefined;
+    fileInjections: FileInjection[];
+    label: string | undefined;
+    keepStdinOpen: boolean | undefined;
+    overflow: OverflowPolicy | undefined;
+    logRingBytes: number | undefined;
+    maxLifetimeMs: bigint | undefined;
+    idleTimeoutMs: bigint | undefined;
+    exitRetentionMs: bigint | undefined;
+  }
+
+  export class ProcessHandle {
+    private constructor();
+    readLogs(): ReadLogsResult;
+    writeStdin(data: Uint8Array): number;
+    closeStdin(): void;
+    signal(sig: ProcessSignal): void;
+    kill(): KillResult;
+    wait(timeoutMs: bigint | undefined): ExitInfo;
+    waitWithOutput(timeoutMs: bigint | undefined): ProcessResult;
+    osPid(): number;
+    subscribeExit(): Pollable;
+    subscribeLogs(): Pollable;
+    [Symbol.dispose](): void;
+  }
+
+  export function spawn(request: SpawnRequest): ProcessResult;
+  export function spawnBackground(request: SpawnRequest): ProcessHandle;
   export function spawnPersistent(request: SpawnRequest): string;
   export function attach(id: string): ProcessHandle;
   export function listProcesses(labelFilter: string | undefined): ProcessInfo[];

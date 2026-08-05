@@ -1,11 +1,22 @@
 /**
  * Full TS port of `sdk-rust/examples/test-capsule`. Exercises every Phase 2
- * SDK surface: `@tool` (mutable + stateless), `@interceptor`, `@install`,
+ * SDK surface: `@tool` (mutable + stateless), `@interceptor`, `@hook`, `@install`,
  * `@upgrade`, WIT-typed event publishing via `ipc.publishJson`, and a
  * `wit_events`-derived TS type.
  */
 
-import { capsule, tool, interceptor, install, upgrade, log, ipc } from "@unicity-astrid/sdk";
+import {
+  capsule,
+  tool,
+  interceptor,
+  hook,
+  install,
+  upgrade,
+  log,
+  ipc,
+  type HookEvent,
+  type HookResult,
+} from "@unicity-astrid/sdk";
 import type { events } from "../gen/events.js";
 type TestEvent = events.TestEvent;
 
@@ -44,6 +55,13 @@ export class TestCapsule {
   @interceptor("test.v1.event")
   handleEvent(_payload: unknown): { handled: boolean } {
     return { handled: true };
+  }
+
+  /** Veto one illustrative tool name through the semantic hook surface. */
+  @hook("before_tool_call")
+  beforeToolCall(event: HookEvent): HookResult | undefined {
+    const payload = event.json<{ tool?: string }>();
+    return payload.tool === "forbidden" ? { skip: true } : undefined;
   }
 
   @install

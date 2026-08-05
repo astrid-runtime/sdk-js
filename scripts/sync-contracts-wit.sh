@@ -41,7 +41,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-SRC_DIR="$ROOT/contracts/interfaces"
+SRC_DIR="${ASTRID_CONTRACTS_DIR:-$ROOT/contracts/interfaces}"
 DST="$ROOT/packages/astrid-sdk/wit-contracts/astrid-contracts.wit"
 
 if [[ ! -d "$SRC_DIR" ]]; then

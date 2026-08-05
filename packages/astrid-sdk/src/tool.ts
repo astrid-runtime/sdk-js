@@ -1,6 +1,6 @@
 /**
- * `@tool`, `@interceptor`, `@command` method decorators — mirror
- * `#[astrid::tool]`, `#[astrid::interceptor]`, `#[astrid::command]` from the
+ * `@tool`, `@interceptor`, `@hook`, `@command` method decorators — mirror
+ * `#[astrid::tool]`, `#[astrid::interceptor]`, `#[astrid::hook]`, `#[astrid::command]` from the
  * Rust SDK.
  *
  * Unlike Rust, JS has no `&mut self` signal at decoration time, so
@@ -12,8 +12,10 @@ import {
   type CapsuleConstructor,
   recordTool,
   recordInterceptor,
+  recordHook,
   recordCommand,
 } from "./runtime/registry.js";
+import type { HookEvent, HookResult } from "./hooks.js";
 
 export interface ToolOptions {
   /** If true, the bridge auto-loads + auto-persists capsule state via KV `__state`. */
@@ -26,6 +28,11 @@ export interface ToolOptions {
 
 export interface InterceptorOptions {
   /** Mirror @tool: opt-in state load/save for handlers that mutate `this`. */
+  mutable?: boolean;
+}
+
+export interface HookOptions {
+  /** Opt in to loading and persisting capsule state around the handler. */
   mutable?: boolean;
 }
 
@@ -45,14 +52,12 @@ export function tool(name: string, options: ToolOptions = {}) {
     _value: (this: This, args: Args) => Result | Promise<Result>,
     context: ClassMethodDecoratorContext<This, (this: This, args: Args) => Result | Promise<Result>>,
   ): void {
-    if (context.private || context.static) {
-      throw new Error(`@tool("${name}") must be applied to a public instance method.`);
-    }
+    const methodName = publicMethodName("tool", name, context);
     context.addInitializer(function () {
       const ctor = (this as object).constructor as CapsuleConstructor;
       recordTool(ctor, {
         name,
-        methodName: String(context.name),
+        methodName,
         mutable: options.mutable === true,
         description: options.description,
         inputSchema: options.inputSchema,
@@ -77,14 +82,44 @@ export function interceptor(topic: string, options: InterceptorOptions = {}) {
     _value: (this: This, payload: Payload) => Result | Promise<Result>,
     context: ClassMethodDecoratorContext<This, (this: This, payload: Payload) => Result | Promise<Result>>,
   ): void {
-    if (context.private || context.static) {
-      throw new Error(`@interceptor("${topic}") must be applied to a public instance method.`);
-    }
+    const methodName = publicMethodName("interceptor", topic, context);
     context.addInitializer(function () {
       const ctor = (this as object).constructor as CapsuleConstructor;
       recordInterceptor(ctor, {
         topic,
-        methodName: String(context.name),
+        methodName,
+        mutable: options.mutable === true,
+      });
+    });
+  };
+}
+
+/**
+ * Declares a semantic lifecycle-hook handler.
+ *
+ * The handler receives a typed {@link HookEvent}. Returning a HookResult
+ * publishes it automatically; returning `undefined` observes without
+ * replying. Malformed events and handler failures are logged and fail open.
+ */
+export function hook(name: string, options: HookOptions = {}) {
+  requireName("hook", name);
+
+  return function <This extends object>(
+    _value: (
+      this: This,
+      event: HookEvent,
+    ) => HookResult | undefined | Promise<HookResult | undefined>,
+    context: ClassMethodDecoratorContext<
+      This,
+      (this: This, event: HookEvent) => HookResult | undefined | Promise<HookResult | undefined>
+    >,
+  ): void {
+    const methodName = publicMethodName("hook", name, context);
+    context.addInitializer(function () {
+      const ctor = (this as object).constructor as CapsuleConstructor;
+      recordHook(ctor, {
+        name,
+        methodName,
         mutable: options.mutable === true,
       });
     });
@@ -104,14 +139,12 @@ export function command(name: string, options: CommandOptions = {}) {
     _value: (this: This, payload: Payload) => Result | Promise<Result>,
     context: ClassMethodDecoratorContext<This, (this: This, payload: Payload) => Result | Promise<Result>>,
   ): void {
-    if (context.private || context.static) {
-      throw new Error(`@command("${name}") must be applied to a public instance method.`);
-    }
+    const methodName = publicMethodName("command", name, context);
     context.addInitializer(function () {
       const ctor = (this as object).constructor as CapsuleConstructor;
       recordCommand(ctor, {
         name,
-        methodName: String(context.name),
+        methodName,
         mutable: options.mutable === true,
       });
     });
@@ -122,4 +155,15 @@ function requireName(kind: string, name: string): void {
   if (typeof name !== "string" || name.length === 0) {
     throw new Error(`@${kind} requires a non-empty name (got ${JSON.stringify(name)})`);
   }
+}
+
+function publicMethodName(
+  kind: string,
+  name: string,
+  context: { name: string | symbol; private: boolean; static: boolean },
+): string {
+  if (context.private || context.static || typeof context.name !== "string") {
+    throw new Error(`@${kind}("${name}") must be applied to a string-named public instance method.`);
+  }
+  return context.name;
 }
