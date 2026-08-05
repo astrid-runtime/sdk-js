@@ -9,10 +9,10 @@
     "build:ts": "tsc"
   },
   "dependencies": {
-    "@unicity-astrid/sdk": "*"
+    "@astrid-runtime/sdk": "*"
   },
   "devDependencies": {
-    "@unicity-astrid/build": "*",
+    "@astrid-runtime/build": "*",
     "typescript": "^5.6.0"
   }
 }

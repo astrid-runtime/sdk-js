@@ -1,6 +1,6 @@
-# @unicity-astrid/build
+# @astrid-runtime/build
 
-[![License: MIT OR Apache-2.0](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-blue.svg)](../../LICENSE-MIT)
+[![License: MIT OR Apache-2.0](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE-MIT)
 [![Node: >=20](https://img.shields.io/badge/Node-%3E%3D20-blue)](https://nodejs.org)
 
 **The compiler that turns a TypeScript class into a WASM capsule.**
@@ -19,7 +19,7 @@ sdk-js/packages/astrid-build/src/index.mjs <project-dir> --out <wasm-path>
 3. tsc: compile src/*.ts → dist/*.js, using project's tsconfig.json
 4. Emit gen/_entry.src.mjs that imports the user's compiled entry,
    constructs the SDK bridge, re-exports the four WIT export names
-5. esbuild bundle: gen/_entry.src.mjs + @unicity-astrid/sdk → gen/_entry.mjs
+5. esbuild bundle: gen/_entry.src.mjs + @astrid-runtime/sdk → gen/_entry.mjs
    (one self-contained ESM file, "astrid:*" specifiers marked external)
 6. ComponentizeJS programmatic API: gen/_entry.mjs + wit/ → target/<name>.wasm
    (with disableFeatures: all five, so the output has zero WASI imports)
@@ -33,10 +33,10 @@ The Rust `astrid-build` then calls `pack_capsule_archive` on the resulting `.was
 The `gen/_entry.mjs` is a thin wrapper that:
 
 - **Imports the user code** (decorators fire and populate the SDK registry)
-- **Builds the bridge** via `createBridge()` from `@unicity-astrid/sdk/runtime`
+- **Builds the bridge** via `createBridge()` from `@astrid-runtime/sdk/runtime`
 - **Re-exports the four WIT-required guest functions**: `astridHookTrigger`, `run`, `astridInstall`, `astridUpgrade`
 
-The bridge runtime in `@unicity-astrid/sdk` dispatches:
+The bridge runtime in `@astrid-runtime/sdk` dispatches:
 
 - `tool_describe` → lazy-built aggregated schema list (`{ tools: [...], description: "..." }`)
 - `tool_execute_<name>` → optional KV `__state` load → user handler → optional state save → IPC publish to `tool.v1.execute.<name>.result` → return `{ action: "continue", data: undefined }`
@@ -70,7 +70,7 @@ The orchestrator currently accepts:
 The Rust kernel locates this script via:
 
 1. `$ASTRID_JS_BUILD` environment variable (absolute path override, dev-only)
-2. `<project>/node_modules/@unicity-astrid/build/src/index.mjs` (walked up like Node's resolver, so npm-workspaces hoisting works)
+2. `<project>/node_modules/@astrid-runtime/build/src/index.mjs` (walked up like Node's resolver, so npm-workspaces hoisting works)
 
 ## ComponentizeJS configuration
 

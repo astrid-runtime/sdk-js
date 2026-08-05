@@ -1,14 +1,26 @@
 {
-  "name": "@unicity-astrid/build",
+  "name": "@astrid-runtime/build",
   "version": "0.2.0",
   "description": "Build orchestrator that turns a TS/JS Astrid capsule project into a wasm32-wasip2 component.",
+  "license": "MIT OR Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/astrid-runtime/sdk-js.git",
+    "directory": "packages/astrid-build"
+  },
+  "homepage": "https://github.com/astrid-runtime/sdk-js/tree/main/packages/astrid-build#readme",
+  "bugs": {
+    "url": "https://github.com/astrid-runtime/sdk-js/issues"
+  },
   "type": "module",
   "main": "./src/index.mjs",
   "bin": {
     "astrid-js-build": "./src/index.mjs"
   },
   "files": [
-    "src"
+    "src",
+    "LICENSE-MIT",
+    "LICENSE-APACHE"
   ],
   "scripts": {
     "build": "echo 'no build step — pure ESM'"

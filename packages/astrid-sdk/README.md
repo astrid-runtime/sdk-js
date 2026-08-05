@@ -1,6 +1,6 @@
-# @unicity-astrid/sdk
+# @astrid-runtime/sdk
 
-[![License: MIT OR Apache-2.0](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-blue.svg)](../../LICENSE-MIT)
+[![License: MIT OR Apache-2.0](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE-MIT)
 [![Node: >=20](https://img.shields.io/badge/Node-%3E%3D20-blue)](https://nodejs.org)
 [![TypeScript: 5.2+](https://img.shields.io/badge/TypeScript-5.2%2B-blue)](https://www.typescriptlang.org)
 
@@ -13,7 +13,7 @@ Sibling of [`astrid-sdk`](https://github.com/astrid-runtime/sdk-rust) (Rust). Sa
 ```text
 Capsule code (TypeScript or JavaScript)
     |
-  @unicity-astrid/sdk           typed modules: fs, net, ipc, kv, http, ...
+  @astrid-runtime/sdk           typed modules: fs, net, ipc, kv, http, ...
     |
   WIT-imported bindings    versioned "astrid:<domain>/host" + "astrid:io/*@1.0.0" (ComponentizeJS-generated)
     |
@@ -62,12 +62,12 @@ TypeScript 5.2+ standard decorators (TC39 Stage 3). No `experimentalDecorators` 
 ## Quick start
 
 ```bash
-npm install @unicity-astrid/sdk
-npm install --save-dev @unicity-astrid/build typescript
+npm install @astrid-runtime/sdk
+npm install --save-dev @astrid-runtime/build typescript
 ```
 
 ```typescript
-import { capsule, tool, install, log, kv } from "@unicity-astrid/sdk";
+import { capsule, tool, install, log, kv } from "@astrid-runtime/sdk";
 
 @capsule
 export class MyCapsule {
@@ -87,7 +87,7 @@ export class MyCapsule {
 }
 ```
 
-`astrid build` (from the Rust kernel CLI) detects `package.json + Capsule.toml`, shells out to the `@unicity-astrid/build` Node orchestrator, and emits a `.capsule` archive packaged identically to a Rust capsule's.
+`astrid build` (from the Rust kernel CLI) detects `package.json + Capsule.toml`, shells out to the `@astrid-runtime/build` Node orchestrator, and emits a `.capsule` archive packaged identically to a Rust capsule's.
 
 ## Error model: throw, don't `Result`
 
@@ -156,9 +156,9 @@ The bridge auto-generates the `tool_describe` aggregated schema payload (lazy, c
 
 | Import | Contents |
 |---|---|
-| `@unicity-astrid/sdk` | Public API barrel |
-| `@unicity-astrid/sdk/runtime` | Internal registry + bridge — exposed for advanced authors only |
-| `@unicity-astrid/sdk/contracts` | Auto-generated TS types from `astrid-contracts.wit` (`Message`, `ToolCall`, `GenerateRequest`, `StreamEvent`, etc.) |
+| `@astrid-runtime/sdk` | Public API barrel |
+| `@astrid-runtime/sdk/runtime` | Internal registry + bridge — exposed for advanced authors only |
+| `@astrid-runtime/sdk/contracts` | Auto-generated TS types from `astrid-contracts.wit` (`Message`, `ToolCall`, `GenerateRequest`, `StreamEvent`, etc.) |
 
 ## Status
 

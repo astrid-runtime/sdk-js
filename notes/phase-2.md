@@ -58,7 +58,7 @@ in JSDoc) — use `.poll()` / `.recv()` when those signals matter.
 
 ### `wit_events` codegen
 
-`@unicity-astrid/build/src/wit-codegen.mjs` reads each `.wit` file in the
+`@astrid-runtime/build/src/wit-codegen.mjs` reads each `.wit` file in the
 project's `wit/` directory and emits `gen/<file>.d.ts` with TypeScript
 interfaces. The codegen is wired before `tsc` so generated types are
 type-check-visible.
@@ -145,7 +145,7 @@ Following the load-bearing milestone above, all remaining Phase 2 modules
 were implemented in a single pass. Every host interface from
 `astrid-capsule.wit` is now wrapped with an idiomatic JS-side module, and
 the shared IPC event types from `astrid-contracts.wit` are exposed as a
-codegen'd `@unicity-astrid/sdk/contracts` subpath.
+codegen'd `@astrid-runtime/sdk/contracts` subpath.
 
 ### Full module inventory
 
@@ -199,13 +199,13 @@ full declared surface either way (no tree-shaking at the WIT level).
 ### `astrid-sdk-types` integration
 
 The SDK's `package.json` `prebuild` script runs
-`scripts/generate-contracts.mjs`, which calls `@unicity-astrid/build`'s
+`scripts/generate-contracts.mjs`, which calls `@astrid-runtime/build`'s
 `codegenWitEvents` on `wit-contracts/astrid-contracts.wit` and emits
 `src/contracts.ts`. tsc then compiles that as part of the normal SDK
 build. Capsule authors get:
 
 ```ts
-import { Message, ToolCall, GenerateRequest, StreamEvent } from "@unicity-astrid/sdk/contracts";
+import { Message, ToolCall, GenerateRequest, StreamEvent } from "@astrid-runtime/sdk/contracts";
 ```
 
 39 generated types across the 9 WIT interfaces in astrid-contracts.wit
