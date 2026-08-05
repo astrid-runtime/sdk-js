@@ -141,7 +141,7 @@ export function setVersioned<T>(key: string, value: T, version: number): void {
 export function getVersioned<T>(key: string, currentVersion: number): Versioned<T> {
   assertSchemaVersion("currentVersion", currentVersion);
   const bytes = getBytes(key);
-  if (bytes === undefined || bytes.length === 0) return { kind: "notFound" };
+  if (bytes === undefined) return { kind: "notFound" };
 
   let value: unknown;
   try {

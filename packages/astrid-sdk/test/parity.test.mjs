@@ -218,6 +218,7 @@ test("process spawn follows Node background semantics and spawnSync captures out
         return { stdout: "", stderr: "", exit: { exitCode: 0, signal: undefined } };
       }
       export function spawnBackground(request) {
+        if (globalThis.__astridFailBackgroundSpawn) throw new Error("background unavailable");
         globalThis.__astridBackgroundRequest = request;
         return {
           readLogs() { return { stdout: "", stderr: "", running: true, exit: undefined }; },
@@ -269,6 +270,9 @@ test("process spawn follows Node background semantics and spawnSync captures out
   assert.throws(() => child.signal("SIGBOGUS"), /unsupported process signal/);
   assert.deepEqual(globalThis.__astridBackgroundRequest.args, ["--serve"]);
   child.close();
+  globalThis.__astridFailBackgroundSpawn = true;
+  assert.throws(() => process.spawn("broken"), /process\.spawnBackground\("broken"\)/);
+  globalThis.__astridFailBackgroundSpawn = false;
   assert.throws(() => new process.ChildProcess(Symbol(), {}), /cannot be constructed directly/);
 });
 
@@ -369,6 +373,8 @@ test("versioned KV distinguishes migration states and writes migrated data", asy
   assert.throws(() => kv.getVersioned("settings", 1), /newer than current version/);
   kv.delete("settings");
   assert.deepEqual(kv.getVersioned("settings", 2), { kind: "notFound" });
+  kv.setBytes("settings", new Uint8Array());
+  assert.throws(() => kv.getVersioned("settings", 2), /kv\.getVersioned.*JSON/);
 });
 
 test("hook events reply on scoped topics and bridge dispatch remains fail-open", async () => {

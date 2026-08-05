@@ -168,7 +168,7 @@ export function spawn(
   options?: SpawnOptions,
 ): ChildProcess {
   const request = buildSpawnRequest(cmd, args, options);
-  const inner = callHost(`process.spawn(${JSON.stringify(cmd)})`, () =>
+  const inner = callHost(`process.spawnBackground(${JSON.stringify(cmd)})`, () =>
     hostSpawnBackground(request),
   );
   return createChildProcess(inner);
